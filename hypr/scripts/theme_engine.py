@@ -53,6 +53,18 @@ DEFAULT_STATE = {
     "gaps_in": 2,
     "gaps_out": 5,
     "border_size": 2,
+    # cava visualizer settings
+    "cava_freq_low": 20,
+    "cava_freq_high": 1000,
+    "cava_bars": 6,
+    "cava_noise": 77,
+    "cava_sensitivity": 100,
+    "cava_mirror": True,
+    "cava_color_mode": "gradient",
+    "cava_grad_from": "accent",
+    "cava_grad_to": "gold",
+    "cava_framerate": 24,
+    "cava_silence": 32,
 }
 
 
@@ -679,20 +691,91 @@ def next_theme(direction: int = 1) -> str:
     return slug
 
 
+_CAVA_INT_RANGES: dict[str, tuple[int, int]] = {
+    "cava_freq_low": (1, 500),
+    "cava_freq_high": (200, 20000),
+    "cava_bars": (2, 12),
+    "cava_noise": (0, 100),
+    "cava_sensitivity": (50, 300),
+    "cava_framerate": (12, 60),
+    "cava_silence": (0, 120),
+}
+_CAVA_BOOL_KEYS = {"cava_mirror"}
+_CAVA_STRING_OPTIONS: dict[str, set[str]] = {
+    "cava_color_mode": {"gradient", "theme", "solid"},
+    "cava_grad_from": {"accent", "gold", "cyan", "red", "green", "blue", "fg"},
+    "cava_grad_to": {"accent", "gold", "cyan", "red", "green", "blue", "fg"},
+}
+
+
+def _write_cava_state_json(state: dict) -> None:
+    """Sync relevant cava_* keys from theme state into waybar/cava-state.json."""
+    cava_state = {
+        "freq_low": int(state.get("cava_freq_low", 20)),
+        "freq_high": int(state.get("cava_freq_high", 1000)),
+        "bars": int(state.get("cava_bars", 6)),
+        "noise_reduction": round(int(state.get("cava_noise", 77)) / 100.0, 2),
+        "sensitivity": int(state.get("cava_sensitivity", 100)),
+        "mirror": bool(state.get("cava_mirror", True)),
+        "color_mode": str(state.get("cava_color_mode", "gradient")),
+        "gradient_from": str(state.get("cava_grad_from", "accent")),
+        "gradient_to": str(state.get("cava_grad_to", "gold")),
+        "framerate": int(state.get("cava_framerate", 24)),
+        "silence_timeout": int(state.get("cava_silence", 32)),
+        "bar_style": "blocks",
+    }
+    cava_state_path = WAYBAR / "cava-state.json"
+    cava_state_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = cava_state_path.with_name(cava_state_path.name + ".tmp")
+    tmp.write_text(json.dumps(cava_state, indent=2) + "\n", encoding="utf-8")
+    tmp.replace(cava_state_path)
+
+
+def _signal_cava_waybar() -> None:
+    """Send SIGUSR1 to any running cava-waybar process to trigger a restart."""
+    try:
+        subprocess.run(
+            ["pkill", "-USR1", "-f", "cava-waybar"],
+            capture_output=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+
+
 def set_option(key: str, value) -> dict:
     state = load_state()
     bool_keys = {"blur", "animations", "shadow"}
     int_keys = {"rounding", "gaps_in", "gaps_out", "border_size"}
-    if key in bool_keys:
+    is_cava = (
+        key in _CAVA_INT_RANGES
+        or key in _CAVA_BOOL_KEYS
+        or key in _CAVA_STRING_OPTIONS
+    )
+    if key in bool_keys or key in _CAVA_BOOL_KEYS:
         state[key] = _as_bool(value)
     elif key in int_keys:
         state[key] = max(0, int(value))
+    elif key in _CAVA_INT_RANGES:
+        lo, hi = _CAVA_INT_RANGES[key]
+        state[key] = max(lo, min(hi, int(value)))
+    elif key in _CAVA_STRING_OPTIONS:
+        allowed = _CAVA_STRING_OPTIONS[key]
+        sv = str(value)
+        if sv not in allowed:
+            raise ValueError(f"{key}: invalid value {sv!r}; allowed: {allowed}")
+        state[key] = sv
     else:
         raise ValueError(f"unknown option: {key}")
     save_state(state)
-    theme = load_theme(state["theme"])
-    render_all(theme, state)
-    reload_hyprland()
+    if is_cava:
+        # Write cava-state.json and signal the running visualizer
+        _write_cava_state_json(state)
+        _signal_cava_waybar()
+    else:
+        theme = load_theme(state["theme"])
+        render_all(theme, state)
+        reload_hyprland()
     return state
 
 

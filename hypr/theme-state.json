@@ -12,5 +12,16 @@
   "gaps_in": 2,
   "gaps_out": 5,
   "border_size": 2,
+  "cava_freq_low": 20,
+  "cava_freq_high": 1000,
+  "cava_bars": 6,
+  "cava_noise": 77,
+  "cava_sensitivity": 100,
+  "cava_mirror": true,
+  "cava_color_mode": "gradient",
+  "cava_grad_from": "accent",
+  "cava_grad_to": "gold",
+  "cava_framerate": 24,
+  "cava_silence": 32,
   "wallpaper_applied": true
 }

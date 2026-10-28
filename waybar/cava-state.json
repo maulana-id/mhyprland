@@ -1,0 +1,14 @@
+{
+  "freq_low": 20,
+  "freq_high": 1000,
+  "bars": 6,
+  "noise_reduction": 0.77,
+  "sensitivity": 100,
+  "mirror": true,
+  "color_mode": "gradient",
+  "gradient_from": "accent",
+  "gradient_to": "gold",
+  "framerate": 24,
+  "silence_timeout": 32,
+  "bar_style": "blocks"
+}
