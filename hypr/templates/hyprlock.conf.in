@@ -52,7 +52,7 @@ input-field {
 
     fade_on_empty = false
     rounding = ${rounding}
-    placeholder_text = <span foreground="${muted_hex}">Enter password…</span>
+    placeholder_text = <span foreground="#${muted_hex}">Enter password…</span>
     fail_text = <i>$PAMFAIL</i>
 
     position = 0, -56
@@ -99,7 +99,7 @@ label {
 # Small unlock hint
 label {
     monitor =
-    text = <span foreground="${muted_hex}">enter to unlock  ·  esc to clear</span>
+    text = <span foreground="#${muted_hex}">enter to unlock  ·  esc to clear</span>
     color = ${muted}
     font_size = 12
     font_family = ${font}

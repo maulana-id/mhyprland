@@ -5,7 +5,7 @@
   "fit_mode": "cover",
   "waybar_layout": "default",
   "bar_position": "top",
-  "blur": false,
+  "blur": true,
   "animations": true,
   "shadow": true,
   "rounding": 8,
