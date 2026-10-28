@@ -44,7 +44,11 @@ fi
 
 if [ ! -S "$DIR/.socket.sock" ]; then
     echo "waybar-ipc-proxy failed to start; using the real Hyprland socket" >&2
-    exec env HYPRLAND_INSTANCE_SIGNATURE="$REAL" waybar "$@"
+    LOG="${XDG_CACHE_HOME:-$HOME/.cache}/waybar.log"
+    mkdir -p "$(dirname "$LOG")"
+    exec env HYPRLAND_INSTANCE_SIGNATURE="$REAL" waybar "$@" >>"$LOG" 2>&1
 fi
 
-exec env HYPRLAND_INSTANCE_SIGNATURE="$PROXY" waybar "$@"
+LOG="${XDG_CACHE_HOME:-$HOME/.cache}/waybar.log"
+mkdir -p "$(dirname "$LOG")"
+exec env HYPRLAND_INSTANCE_SIGNATURE="$PROXY" waybar "$@" >>"$LOG" 2>&1

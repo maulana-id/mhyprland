@@ -130,7 +130,7 @@ The lock screen automatically uses the current wallpaper too.
   is on, so clicking a workspace opens it on the current monitor.
 - **Theme button:** click to open the Control Center, scroll to cycle themes.
 - **Wallpaper button:** click to open the picker, right-click for a random wallpaper.
-- **Power button:** opens `hyprshutdown`.
+- **Power button:** opens a themed confirmation dialog first. **Cancel** is the default, `Esc` cancels, and it auto-cancels after 15 seconds. Only **Open power menu** starts `hyprshutdown`.
 - **Updates:** `waybar/scripts/updates.sh` counts Debian package upgrades every hour.
 
 Switch layouts and positions:
@@ -170,6 +170,14 @@ the rest of the config works with both versions. If the proxy cannot start it fa
 socket (the bar still works, only legacy clicks fail).
 
 ![Waybar layouts](hypr/assets/screenshot-waybar.png)
+
+### Power button safety
+
+A stray click on the far-right power button no longer opens the shutdown menu directly. A small
+themed dialog asks first; Cancel is default, Escape cancels, and the dialog auto-cancels after 15
+seconds. The lock is single-instance, so double-clicking the Waybar button cannot stack dialogs.
+
+![Power confirmation](hypr/assets/screenshot-power-confirm.png)
 
 ## Hypr Control Center
 
@@ -258,6 +266,7 @@ background blur, powerline tabs, and a 10k-line scrollback. Colours are imported
 │   ├── scripts/
 │   │   ├── start-waybar
 │   │   ├── waybar-ipc-proxy.py
+│   │   ├── power-menu
 │   │   ├── updates.sh
 │   │   └── hyprsunset-slider.py
 │   └── wttrbar
@@ -298,6 +307,10 @@ known-good PNG. If hyprpaper is missing, `bootstrap` installs it locally or use
 
 **Waybar CSS import.** `style.css` starts with `@import url("colors.css");`. If you copy just
 `style.css` somewhere else, copy `colors.css` too or re-run `theme-switch apply`.
+
+**Waybar disappeared.** The launcher now writes Waybar's output to `~/.cache/waybar.log`. Restart it
+with `~/.config/waybar/scripts/start-waybar` (this keeps the Lua IPC shim active). The power button
+now asks for confirmation before opening hyprshutdown.
 
 **Workspace buttons do nothing.** Make sure Waybar was started through
 `waybar/scripts/start-waybar`, not the bare `waybar` binary. Check

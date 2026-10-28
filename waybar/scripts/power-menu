@@ -1,0 +1,311 @@
+#!/usr/bin/env python3
+"""Themed confirmation gate for the Waybar power button.
+
+One click opens this dialog. The default button is Cancel, Escape cancels, and
+the dialog auto-cancels after 15 seconds. Only the explicit "Open power menu"
+button starts hyprshutdown.
+"""
+
+from __future__ import annotations
+
+import fcntl
+import json
+import os
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+import gi
+
+gi.require_version("Gtk", "3.0")
+gi.require_version("Gdk", "3.0")
+from gi.repository import Gdk, GLib, Gtk  # noqa: E402
+
+BASE = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(BASE / "hypr" / "scripts"))
+import theme_engine as engine  # noqa: E402
+
+TIMEOUT = int(os.environ.get("POWER_CONFIRM_TIMEOUT", "15"))
+CLASS = "hypr-power-confirm"
+_lock_handle = None
+
+
+def acquire_lock() -> bool:
+    """Only one confirmation window at a time."""
+    global _lock_handle
+    runtime = Path(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}"))
+    path = runtime / "hypr-power-confirm.lock"
+    try:
+        _lock_handle = open(path, "w", encoding="utf-8")
+        fcntl.flock(_lock_handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        _lock_handle.write(str(os.getpid()))
+        _lock_handle.flush()
+        return True
+    except (BlockingIOError, OSError):
+        return False
+
+
+def app_css(theme: dict) -> str:
+    c = theme["colors"]
+    return f"""
+    window,
+    dialog,
+    dialog .dialog-vbox,
+    dialog .dialog-action-area,
+    dialog box {{
+        background-color: {c['bg']};
+        color: {c['fg']};
+    }}
+    .power-title {{
+        font-family: "JetBrainsMono Nerd Font";
+        font-size: 17px;
+        font-weight: 800;
+        color: {c['fg']};
+    }}
+    .power-sub {{
+        font-size: 12px;
+        color: {c['muted']};
+    }}
+    .power-icon {{
+        font-family: "JetBrainsMono Nerd Font";
+        font-size: 32px;
+        color: {c['red']};
+    }}
+    .power-countdown {{
+        font-size: 10px;
+        color: {c['muted']};
+    }}
+    button.power-cancel {{
+        background-color: {c['surface']};
+        background-image: none;
+        border: 1px solid {c['border']};
+        border-radius: 8px;
+        padding: 9px 20px;
+        color: {c['fg']};
+        font-weight: 600;
+    }}
+    button.power-cancel:hover {{
+        background-color: {c['surface_alt']};
+    }}
+    button.power-cancel:focus {{
+        border-color: {c['accent_alt']};
+    }}
+    button.power-confirm {{
+        background-color: {c['accent']};
+        background-image: none;
+        border: 1px solid {c['accent']};
+        border-radius: 8px;
+        padding: 9px 20px;
+        color: {c['on_accent']};
+        font-weight: 800;
+    }}
+    button.power-confirm:hover {{
+        background-color: {c['accent_alt']};
+        border-color: {c['accent_alt']};
+        color: {c['on_accent']};
+    }}
+    button.power-close {{
+        background-color: transparent;
+        background-image: none;
+        border: none;
+        border-radius: 7px;
+        padding: 2px 9px;
+        color: {c['fg_dim']};
+        font-size: 13px;
+    }}
+    button.power-close:hover {{
+        background-color: {c['surface']};
+        color: {c['fg']};
+    }}
+    """
+
+
+class PowerConfirm:
+    def __init__(self) -> None:
+        self.theme = engine.load_theme()
+        self.dialog = Gtk.Dialog(title="Power menu", flags=0)
+        self.dialog.set_default_size(470, 230)
+        self.dialog.set_resizable(False)
+        self.dialog.set_decorated(False)
+        self.dialog.set_modal(True)
+        self.dialog.set_keep_above(True)
+        self.dialog.set_icon_name("system-shutdown")
+        self.dialog.set_position(Gtk.WindowPosition.CENTER)
+        self.dialog.get_style_context().add_class("power-dialog")
+        self.dialog.set_border_width(18)
+
+        self.remaining = TIMEOUT
+        self.timer_id = 0
+        self._build()
+        self._apply_css()
+
+    def _build(self) -> None:
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        self.dialog.get_content_area().add(box)
+
+        top = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        box.pack_start(top, False, False, 0)
+
+        icon = Gtk.Label(label="⏻")
+        icon.get_style_context().add_class("power-icon")
+        top.pack_start(icon, False, False, 0)
+
+        titles = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
+        titles.pack_start(self._label("Power menu", "power-title"), False, False, 0)
+        titles.pack_start(
+            self._label("A confirmation step, so a stray click cannot shut you down.", "power-sub"),
+            False, False, 0,
+        )
+        top.pack_start(titles, True, True, 0)
+
+        close = Gtk.Button(label="✕")
+        close.set_relief(Gtk.ReliefStyle.NONE)
+        close.get_style_context().add_class("power-close")
+        close.set_tooltip_text("Cancel")
+        close.connect("clicked", lambda *_: self.dialog.response(Gtk.ResponseType.CANCEL))
+        top.pack_end(close, False, False, 0)
+
+        box.pack_start(Gtk.Separator(), False, False, 4)
+
+        message = self._label(
+            "hyprshutdown is about to open. Nothing happens until you pick an action there.",
+            "power-sub",
+        )
+        message.set_line_wrap(True)
+        box.pack_start(message, False, False, 0)
+
+        actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        actions.set_halign(Gtk.Align.END)
+        box.pack_start(actions, False, False, 6)
+
+        cancel = Gtk.Button(label="Cancel")
+        cancel.set_relief(Gtk.ReliefStyle.NONE)
+        cancel.get_style_context().add_class("power-cancel")
+        cancel.connect("clicked", lambda *_: self.dialog.response(Gtk.ResponseType.CANCEL))
+        actions.pack_start(cancel, False, False, 0)
+
+        confirm = Gtk.Button(label="Open power menu")
+        confirm.set_relief(Gtk.ReliefStyle.NONE)
+        confirm.get_style_context().add_class("power-confirm")
+        confirm.connect("clicked", lambda *_: self.dialog.response(Gtk.ResponseType.OK))
+        actions.pack_start(confirm, False, False, 0)
+
+        self.countdown = self._label("", "power-countdown")
+        self.countdown.set_xalign(1.0)
+        box.pack_start(self.countdown, False, False, 0)
+
+        cancel.set_can_default(True)
+        cancel.grab_default()
+        cancel.grab_focus()
+        self.dialog.connect("key-press-event", self._on_key)
+        self.dialog.connect("destroy", lambda *_: self._stop_timer())
+
+        self._update_countdown()
+        self.timer_id = GLib.timeout_add_seconds(1, self._tick)
+
+    def _label(self, text: str, css: str) -> Gtk.Label:
+        label = Gtk.Label(label=text)
+        label.set_xalign(0.0)
+        label.get_style_context().add_class(css)
+        return label
+
+    def _on_key(self, _widget, event) -> bool:
+        if event.keyval == Gdk.KEY_Escape:
+            self.dialog.response(Gtk.ResponseType.CANCEL)
+            return True
+        return False
+
+    def _update_countdown(self) -> None:
+        if self.remaining > 0:
+            self.countdown.set_text(f"auto-cancels in {self.remaining}s")
+        else:
+            self.countdown.set_text("cancelled")
+
+    def _tick(self) -> bool:
+        self.remaining -= 1
+        self._update_countdown()
+        if self.remaining <= 0:
+            self.dialog.response(Gtk.ResponseType.CANCEL)
+            return False
+        return True
+
+    def _stop_timer(self) -> None:
+        if self.timer_id:
+            GLib.source_remove(self.timer_id)
+            self.timer_id = 0
+
+    def _apply_css(self) -> None:
+        provider = Gtk.CssProvider()
+        provider.load_from_data(app_css(self.theme).encode("utf-8"))
+        screen = Gdk.Screen.get_default()
+        if screen is not None:
+            Gtk.StyleContext.add_provider_for_screen(
+                screen, provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+            )
+
+    def _center_self(self) -> bool:
+        try:
+            result = subprocess.run(
+                ["hyprctl", "clients", "-j"], capture_output=True, text=True, timeout=3
+            )
+            clients = json.loads(result.stdout) if result.returncode == 0 else []
+            address = next((c["address"] for c in clients if c.get("pid") == os.getpid()), None)
+            if address:
+                subprocess.run(
+                    ["hyprctl", "dispatch",
+                     f'hl.dsp.focus({{ window = "address:{address}" }})'],
+                    capture_output=True, text=True, timeout=3,
+                )
+                subprocess.run(
+                    ["hyprctl", "dispatch", "hl.dsp.window.center()"],
+                    capture_output=True, text=True, timeout=3,
+                )
+        except Exception:
+            pass
+        return False
+
+    def run(self) -> int:
+        self.dialog.show_all()
+        GLib.timeout_add(150, self._center_self)
+        response = self.dialog.run()
+        self.dialog.destroy()
+        return response
+
+
+def launch_power_menu() -> None:
+    if shutil.which("hyprshutdown"):
+        subprocess.Popen(
+            ["hyprshutdown"],
+            start_new_session=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            env=os.environ.copy(),
+        )
+    else:
+        subprocess.Popen(
+            ["notify-send", "Power menu", "hyprshutdown is not installed"],
+            start_new_session=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+
+def main() -> int:
+    if not acquire_lock():
+        return 0
+    GLib.set_prgname(CLASS)
+    GLib.set_application_name("Power menu confirmation")
+    Gtk.init([])
+    try:
+        Gdk.set_program_class(CLASS)
+    except Exception:
+        pass
+    dialog = PowerConfirm()
+    if dialog.run() == Gtk.ResponseType.OK:
+        launch_power_menu()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

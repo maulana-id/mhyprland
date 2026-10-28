@@ -63,8 +63,8 @@
   },
   "custom/power": {
     "format": "\u23fb",
-    "tooltip-format": "Power menu",
-    "on-click": "hyprshutdown"
+    "tooltip-format": "Power menu\nAsks for confirmation first",
+    "on-click": "$HOME/.config/waybar/scripts/power-menu"
   },
   "custom/weather": {
     "format": "{}\u00b0",
