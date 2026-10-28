@@ -486,6 +486,15 @@ hl.window_rule({
 -- })
 -- overlayLayerRule:set_enabled(false)
 
+-- Suppress layer animations on waybar so that module redraws (e.g. cava
+-- appearing/disappearing) don't cause the GtkMenu popup to glitch when it
+-- is floating over a client window below the bar.
+hl.layer_rule({
+    name  = "no-anim-waybar",
+    match = { namespace = "^waybar$" },
+    no_anim = true,
+})
+
 -- Hyprland-run windowrule
 hl.window_rule({
 	name = "move-hyprland-run",

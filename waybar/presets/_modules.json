@@ -158,7 +158,22 @@
   },
   "clock": {
     "format": "{:%a %d %b  %H:%M}",
-    "tooltip-format": "<tt><small>{calendar}</small></tt>"
+    "tooltip-format": "<span font_family='monospace'>{calendar}</span>",
+    "calendar": {
+      "mode": "month",
+      "weeks-pos": "right",
+      "format": {
+        "months":     "<span color='#cdd6f4'><b>{}</b></span>",
+        "days":       "<span color='#cdd6f4'>{}</span>",
+        "weeks":      "<span color='#6c7086'>W{}</span>",
+        "weekdays":   "<span color='#89b4fa'><b>{}</b></span>",
+        "today":      "<span color='#f38ba8'><b>{}</b></span>"
+      }
+    },
+    "actions": {
+      "on-scroll-up": "shift_up",
+      "on-scroll-down": "shift_down"
+    }
   },
   "idle_inhibitor": {
     "format": "{icon}",
