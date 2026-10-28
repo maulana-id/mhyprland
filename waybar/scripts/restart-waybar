@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Restart the main Waybar through the Lua IPC shim.
+set -euo pipefail
+pkill -x waybar 2>/dev/null || true
+sleep 0.3
+setsid "$HOME/.config/waybar/scripts/start-waybar" >/dev/null 2>&1 </dev/null &

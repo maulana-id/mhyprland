@@ -12,10 +12,10 @@
   "modules-left": [
     "custom/launcher",
     "hyprland/workspaces",
-    "custom/theme"
+    "custom/control"
   ],
   "modules-center": [
-    "mpris"
+    "custom/cava"
   ],
   "modules-right": [
     "pulseaudio",

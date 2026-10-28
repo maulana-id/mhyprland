@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Open the pending Debian updates in a terminal.
+set -euo pipefail
+exec kitty -e sh -c 'apt list --upgradable; printf "\nPress Enter to close…"; read -r _'

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Keep this menu flat: Waybar 0.12 segfaults when GtkBuilder builds nested submenus. -->
+<interface>
+  <object class="GtkMenu" id="menu">
+    <child>
+      <object class="GtkMenuItem" id="header">
+        <property name="label">󰒓  Desktop controls</property>
+        <property name="sensitive">False</property>
+      </object>
+    </child>
+    <child><object class="GtkSeparatorMenuItem" id="sep1"/></child>
+    <child><object class="GtkMenuItem" id="control_center"><property name="label">󰒓  Open Control Center</property></object></child>
+    <child><object class="GtkMenuItem" id="theme_next"><property name="label">󰏘  Next theme</property></object></child>
+    <child><object class="GtkMenuItem" id="wallpaper_random"><property name="label">󰸉  Random wallpaper</property></object></child>
+    <child><object class="GtkMenuItem" id="wallpaper_picker"><property name="label">󰸉  Choose wallpaper…</property></object></child>
+    <child><object class="GtkMenuItem" id="waybar_picker"><property name="label">󰕘  Waybar layouts…</property></object></child>
+    <child><object class="GtkMenuItem" id="waybar_restart"><property name="label">󰑓  Restart Waybar</property></object></child>
+    <child><object class="GtkSeparatorMenuItem" id="sep2"/></child>
+    <child><object class="GtkMenuItem" id="notifications"><property name="label">󰂚  Pause / resume notifications</property></object></child>
+    <child><object class="GtkMenuItem" id="updates"><property name="label">󰏖  Check for updates…</property></object></child>
+    <child><object class="GtkMenuItem" id="screenshot"><property name="label">󰹑  Screenshot region</property></object></child>
+    <child><object class="GtkMenuItem" id="pick_color"><property name="label">󰈊  Pick colour</property></object></child>
+    <child><object class="GtkSeparatorMenuItem" id="sep3"/></child>
+    <child><object class="GtkMenuItem" id="lock"><property name="label">󰌾  Lock screen</property></object></child>
+    <child><object class="GtkMenuItem" id="power"><property name="label">⏻  Power menu…</property></object></child>
+  </object>
+</interface>

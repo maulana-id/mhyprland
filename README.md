@@ -13,7 +13,10 @@ centre for switching themes, wallpapers, Waybar layouts and compositor toggles.
 | **6 palettes** | Ascent (default), Ascent Dawn (light), Catppuccin Mocha, Gruvbox Dark, Nord, Rosé Pine. |
 | **Hypr Control Center** | GTK3 cockpit: theme cards, wallpaper thumbnails, Waybar presets, compositor toggles, keybind cheat sheet. |
 | **hyprpaper + picker** | Wallpaper changing with a GUI, directory slideshows, fit modes, random wallpaper. |
-| **Clickable Waybar** | Workspaces activate on left-click, close on right-click — including a Lua IPC shim for Waybar 0.12 on Hyprland 0.55. Theme/wallpaper buttons; 4 layout presets; 4 bar positions. |
+| **Clickable Waybar** | Workspaces activate on left-click, close on right-click — including a Lua IPC shim for Waybar 0.12 on Hyprland 0.55. |
+| **Compact control menu** | One gear opens a native Waybar popup for theme, wallpaper, layouts, notifications, updates, screenshots, lock and power. |
+| **Resource hover** | CPU + RAM in one pill; hover for load, swap, disk and top processes. |
+| **Bass visualizer** | 12-bar cava spectrum in the bar centre, only while audio is playing. |
 | **Themed kitty** | Fonts, padding, opacity, blur, powerline tabs, 16-colour terminal palette. |
 | **Themed hyprlock** | Wallpaper background, blurred clock/date, themed password field, user@host footer. |
 | **Themed dunst** | Notifications that follow the same palette (and now actually autostart). |
@@ -44,7 +47,7 @@ Hyprland 0.55+ with the Lua config provider, plus:
 
 `waybar` · `kitty` · `hyprlock` · `hypridle` · `hyprlauncher` · `hyprshutdown` · `hyprsunset` ·
 `hyprpolkitagent` · `dunst` · `grim` · `slurp` · `wl-clipboard` · `cliphist` · `brightnessctl` ·
-`playerctl` · `btop` · ImageMagick · Python 3.11+ with PyGObject (GTK 3) · `hyprpaper` ·
+`playerctl` · `btop` · `cava` · ImageMagick · Python 3.11+ with PyGObject (GTK 3) · `hyprpaper` ·
 `hyprpicker` · JetBrainsMono Nerd Font · Symbols Nerd Font.
 
 On Debian:
@@ -52,7 +55,7 @@ On Debian:
 ```bash
 sudo apt install hyprland waybar kitty hyprlock hypridle dunst hyprlauncher hyprshutdown \
   hyprsunset hyprpolkitagent grim slurp wl-clipboard cliphist brightnessctl playerctl \
-  imagemagick python3-gi hyprpaper hyprpicker
+  imagemagick python3-gi hyprpaper hyprpicker cava
 ```
 
 `wttrbar` is bundled in `waybar/wttrbar`, so the weather module works without a network install.
@@ -128,10 +131,18 @@ The lock screen automatically uses the current wallpaper too.
 
 - **Workspaces:** left-click **activates** a workspace, right-click **closes** it. `move-to-monitor`
   is on, so clicking a workspace opens it on the current monitor.
-- **Theme button:** click to open the Control Center, scroll to cycle themes.
-- **Wallpaper button:** click to open the picker, right-click for a random wallpaper.
+- **Control gear:** opens a native Waybar popup menu — next theme, random wallpaper, wallpaper picker,
+  Waybar layouts, restart Waybar, notifications, updates, region screenshot, colour pick, lock and
+  the power menu. Scroll over the gear to cycle themes; right-click opens the Control Center.
+- **Resources:** one compact `CPU% · RAM%` pill. Hover for load average, swap, disk and the top
+  processes; click opens `btop`.
+- **Visualizer:** a 12-bar, bass-weighted cava spectrum in the centre. It uses theme colours, shows
+  the current track on hover, and disappears after ~1.3 seconds of silence, so it never reserves
+  space or clutters the bar.
 - **Power button:** opens a themed confirmation dialog first. **Cancel** is the default, `Esc` cancels, and it auto-cancels after 15 seconds. Only **Open power menu** starts `hyprshutdown`.
-- **Updates:** `waybar/scripts/updates.sh` counts Debian package upgrades every hour.
+- **Stay awake:** the monitor-shaped idle inhibitor stays as a one-click toggle; it is a compositor
+  protocol toggle, not a menu action.
+- **Updates:** the old count pill is gone. Use the control gear → **Check for updates…**.
 
 Switch layouts and positions:
 
@@ -146,6 +157,26 @@ waybar-mode --list
 
 Presets live in `waybar/presets/`; shared module definitions are in `_modules.json`. When you change
 a preset, the engine writes the merged result to `waybar/config.jsonc` and restarts Waybar.
+
+![Compact Waybar with the cava visualizer](hypr/assets/screenshot-bar.png)
+
+![Native control menu](hypr/assets/screenshot-control-menu.png)
+
+![CPU/RAM hover tooltip](hypr/assets/screenshot-resources.png)
+
+### Music visualizer
+
+[cava](https://github.com/karlstav/cava) is installed into `~/.local/bin` by `bootstrap` (or use
+`sudo apt install cava`). It reads the default PipeWire sink monitor (`@DEFAULT_MONITOR@`), so it
+reacts to YouTube Music, local players and anything else coming out of the default output.
+
+- 12 bars, 24 FPS, with the first four bars weighted for bass
+- Ember → gold → frost gradient pulled from the active theme
+- `hide-empty-text` removes it after ~1.3 s of silence and brings it back when audio resumes
+- About 4% of one CPU core while visible; the `cava-waybar` reader is under 1%
+
+If it stays flat, check `pactl get-default-sink` and the `source` line in `waybar/cava.conf`.
+Restart Waybar after changing the cava config.
 
 ### Hyprland 0.55 IPC shim
 
@@ -262,12 +293,17 @@ background blur, powerline tabs, and a 10k-line scrollback. Colours are imported
 │   ├── config.jsonc           # generated from presets
 │   ├── colors.css             # generated
 │   ├── style.css
+│   ├── control-menu.xml       # native GtkMenu for the control gear
+│   ├── cava.conf              # raw spectrum source
 │   ├── presets/{_modules,default,compact,minimal,focus}.json
 │   ├── scripts/
 │   │   ├── start-waybar
 │   │   ├── waybar-ipc-proxy.py
 │   │   ├── power-menu
-│   │   ├── updates.sh
+│   │   ├── cava-waybar
+│   │   ├── resources
+│   │   ├── restart-waybar
+│   │   ├── open-updates
 │   │   └── hyprsunset-slider.py
 │   └── wttrbar
 ├── kitty/
@@ -295,6 +331,15 @@ a tidy diff of the generated palette files. Commit after a theme change if you w
 
 **Missing icons / boxes.** Install the Nerd Fonts (`bootstrap` does this) and run `fc-cache -f`.
 Waybar and kitty both ask for `JetBrainsMono Nerd Font` first, then `Symbols Nerd Font`.
+
+**Visualizer is flat or missing.** Run `pactl get-default-sink`; the monitor is
+`<sink>.monitor`. `waybar/cava.conf` uses `source = @DEFAULT_MONITOR@`. Check
+`~/.cache/waybar.log` for cava errors, then restart Waybar. The spectrum only appears while audio is
+actually playing.
+
+**Control menu does not open.** `waybar/control-menu.xml` must exist and be valid XML. Check
+`~/.cache/waybar.log` for `Error while creating the menu`; the gear uses Waybar's native
+`menu`/`menu-file` support, so it needs Waybar 0.12+ (it is in this repo).
 
 **Wallpaper does not change.** Check `pgrep -x hyprpaper` and
 `hyprctl hyprpaper listactive`. Run `wallpaper-set ~/Pictures/Wallpapers/hyprland-0.png` to force a

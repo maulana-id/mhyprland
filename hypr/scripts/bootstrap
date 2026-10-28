@@ -35,7 +35,7 @@ install_fonts() {
 }
 
 install_local_deb() {
-    # Install a Debian package into ~/.local without sudo (used for hyprpaper/picker).
+    # Install a Debian package into ~/.local without sudo (hyprpaper/picker/cava).
     local package="$1" binary="$2"
     if command -v "$binary" >/dev/null 2>&1 || [ -x "$LOCAL_BIN/$binary" ]; then
         return 0
@@ -79,6 +79,7 @@ install_fonts
 check_deps
 install_local_deb hyprpaper hyprpaper
 install_local_deb hyprpicker hyprpicker
+install_local_deb cava cava
 
 say "Preparing the default wallpaper"
 mkdir -p "$HOME/Pictures/Wallpapers"

@@ -11,14 +11,13 @@
   "margin-bottom": 0,
   "modules-left": [
     "hyprland/workspaces",
-    "custom/theme"
+    "custom/control"
   ],
   "modules-center": [
-    "mpris"
+    "custom/cava"
   ],
   "modules-right": [
-    "cpu",
-    "memory",
+    "custom/resources",
     "clock",
     "battery"
   ]

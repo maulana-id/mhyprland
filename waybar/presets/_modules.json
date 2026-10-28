@@ -31,35 +31,12 @@
     "on-click-right": "close",
     "tooltip": false
   },
-  "custom/theme": {
-    "exec": "$HOME/.config/hypr/scripts/theme-switch current",
-    "interval": 2,
-    "format": "󰏘",
-    "tooltip-format": "Theme: {}\nScroll to cycle · Click for Control Center",
-    "on-click": "$HOME/.config/hypr/scripts/hypr-control-center --tab theme",
-    "on-scroll-up": "$HOME/.config/hypr/scripts/theme-switch next",
-    "on-scroll-down": "$HOME/.config/hypr/scripts/theme-switch prev"
-  },
-  "custom/wallpaper": {
-    "format": "󰸉",
-    "tooltip-format": "Wallpaper\nLeft: picker · Right: random",
-    "on-click": "$HOME/.config/hypr/scripts/hypr-control-center --tab wallpaper",
-    "on-click-right": "$HOME/.config/hypr/scripts/wallpaper-set --random",
-    "on-scroll-up": "$HOME/.config/hypr/scripts/wallpaper-set --random"
-  },
   "custom/hyprsunset": {
     "format": "󰌵",
     "tooltip-format": "Hyprsunset Dimmer\nLeft: open sliders · Scroll: quick adjust",
     "on-click": "python3 $HOME/.config/waybar/scripts/hyprsunset-slider.py",
     "on-scroll-up": "hyprctl hyprsunset gamma +5",
     "on-scroll-down": "hyprctl hyprsunset gamma -5"
-  },
-  "custom/updates": {
-    "exec": "$HOME/.config/waybar/scripts/updates.sh",
-    "return-type": "json",
-    "interval": 3600,
-    "format": "󰏖 {}",
-    "tooltip": true
   },
   "custom/power": {
     "format": "⏻",
@@ -81,26 +58,6 @@
       "performance": "",
       "balanced": "",
       "power-saver": "󰁳"
-    }
-  },
-  "cpu": {
-    "interval": 5,
-    "format": " {usage:02}%",
-    "tooltip-format": "CPU {usage}% · {avg_frequency} GHz",
-    "on-click": "kitty -e btop",
-    "states": {
-      "warning": 55,
-      "critical": 85
-    }
-  },
-  "memory": {
-    "interval": 5,
-    "format": " {used:0.1f} GiB",
-    "tooltip-format": "RAM {percentage}%\n{used:0.1f} GB / {total:0.1f} GB",
-    "on-click": "kitty -e btop",
-    "states": {
-      "warning": 60,
-      "critical": 85
     }
   },
   "backlight": {
@@ -203,26 +160,6 @@
     "format": "{:%a %d %b  %H:%M}",
     "tooltip-format": "<tt><small>{calendar}</small></tt>"
   },
-  "mpris": {
-    "format": "{status_icon} {dynamic}",
-    "format-paused": "{status_icon} {dynamic}",
-    "interval": 5,
-    "dynamic-order": [
-      "artist",
-      "position",
-      "length"
-    ],
-    "dynamic-importance-order": [
-      "position",
-      "length",
-      "artist"
-    ],
-    "tooltip-format": "{player} ({status})\n{artist} - {title}",
-    "max-length": 50,
-    "status-icons": {
-      "paused": "󰝛"
-    }
-  },
   "idle_inhibitor": {
     "format": "{icon}",
     "tooltip-format-activated": "Stay awake: ON",
@@ -235,5 +172,44 @@
   "tray": {
     "icon-size": 14,
     "spacing": 3
+  },
+  "custom/control": {
+    "format": "󰒓",
+    "tooltip-format": "Desktop controls\nLeft: menu · Scroll: theme",
+    "menu": "on-click",
+    "menu-file": "$HOME/.config/waybar/control-menu.xml",
+    "menu-actions": {
+      "control_center": "$HOME/.config/hypr/scripts/hypr-control-center --tab theme",
+      "theme_next": "$HOME/.config/hypr/scripts/theme-switch next",
+      "wallpaper_random": "$HOME/.config/hypr/scripts/wallpaper-set --random",
+      "wallpaper_picker": "$HOME/.config/hypr/scripts/hypr-control-center --tab wallpaper",
+      "waybar_picker": "$HOME/.config/hypr/scripts/hypr-control-center --tab bar",
+      "waybar_restart": "$HOME/.config/waybar/scripts/restart-waybar",
+      "notifications": "dunstctl set-paused toggle",
+      "updates": "$HOME/.config/waybar/scripts/open-updates",
+      "screenshot": "sh -c 'grim -g \"$(slurp -d)\" - | wl-copy'",
+      "pick_color": "hyprpicker -a",
+      "lock": "sh -c 'pidof hyprlock || hyprlock'",
+      "power": "$HOME/.config/waybar/scripts/power-menu"
+    },
+    "on-click-right": "$HOME/.config/hypr/scripts/hypr-control-center --tab theme",
+    "on-scroll-up": "$HOME/.config/hypr/scripts/theme-switch next",
+    "on-scroll-down": "$HOME/.config/hypr/scripts/theme-switch prev"
+  },
+  "custom/resources": {
+    "exec": "$HOME/.config/waybar/scripts/resources",
+    "interval": 2,
+    "return-type": "json",
+    "format": "󰍛 {}",
+    "on-click": "kitty -e btop"
+  },
+  "custom/cava": {
+    "exec": "$HOME/.config/waybar/scripts/cava-waybar",
+    "return-type": "json",
+    "escape": false,
+    "hide-empty-text": true,
+    "restart-interval": 2,
+    "tooltip": true,
+    "format": "{}"
   }
 }

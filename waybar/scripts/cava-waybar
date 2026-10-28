@@ -1,0 +1,174 @@
+#!/usr/bin/env python3
+"""Turn cava's raw spectrum into one line of themed Pango markup for Waybar."""
+
+from __future__ import annotations
+
+import json
+import shutil
+import signal
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+BASE = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(BASE / "hypr" / "scripts"))
+import theme_engine as engine  # noqa: E402
+
+BARS = 12
+BLOCKS = "▁▂▃▄▅▆▇█"
+GROUPS = ((0, 4, "accent"), (4, 8, "gold"), (8, 12, "cyan"))
+CAVA_CONF = BASE / "waybar" / "cava.conf"
+PLAYERCTL = shutil.which("playerctl")
+_current_proc: subprocess.Popen | None = None
+
+
+def current_track() -> str:
+    if not PLAYERCTL:
+        return ""
+    try:
+        result = subprocess.run(
+            [PLAYERCTL, "metadata", "--format", "{{title}} — {{artist}}"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+        if result.returncode == 0:
+            track = result.stdout.strip().replace(" | YouTube Music", "")
+            track = track.removesuffix(" —").removesuffix(" -").strip()
+            return track
+    except Exception:
+        pass
+    return ""
+
+
+def cava_binary() -> str | None:
+    local = Path.home() / ".local" / "bin" / "cava"
+    if local.exists():
+        return str(local)
+    return shutil.which("cava")
+
+
+def stop_child(_signum=None, _frame=None) -> None:
+    if _current_proc is not None:
+        try:
+            _current_proc.terminate()
+        except OSError:
+            pass
+    raise SystemExit(0)
+
+
+def load_colors() -> dict:
+    return engine.load_theme()["colors"]
+
+
+def parse_values(line: str) -> list[int] | None:
+    values: list[int] = []
+    for part in line.strip().split(";"):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            values.append(max(0, min(7, int(float(part)))))
+        except ValueError:
+            return None
+    if not values:
+        return None
+    return values[:BARS]
+
+
+def render(values: list[int], colors: dict) -> str:
+    chunks: list[str] = []
+    for start, end, key in GROUPS:
+        chars: list[str] = []
+        for index in range(start, min(end, len(values))):
+            value = values[index]
+            if index < 4 and value > 0:
+                value = min(7, value + 1)  # give the low end a little punch
+            chars.append(BLOCKS[value])
+        if chars:
+            chunks.append(
+                f'<span foreground="{colors[key]}">{"\u2009".join(chars)}</span>'
+            )
+    return " ".join(chunks)
+
+
+def main() -> int:
+    signal.signal(signal.SIGTERM, stop_child)
+    signal.signal(signal.SIGINT, stop_child)
+
+    binary = cava_binary()
+    if not binary:
+        print("cava is not installed", file=sys.stderr)
+        return 1
+
+    colors = load_colors()
+    state_mtime = engine.STATE_PATH.stat().st_mtime if engine.STATE_PATH.exists() else 0.0
+    last_theme_check = 0.0
+    last_track_check = 0.0
+    track = current_track()
+    silence = 0
+
+    while True:
+        global _current_proc
+        _current_proc = subprocess.Popen(
+            [binary, "-p", str(CAVA_CONF)],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            bufsize=1,
+        )
+        try:
+            assert _current_proc.stdout is not None
+            for line in _current_proc.stdout:
+                now = time.monotonic()
+                if now - last_theme_check > 1.0:
+                    last_theme_check = now
+                    try:
+                        mtime = engine.STATE_PATH.stat().st_mtime
+                        if mtime != state_mtime:
+                            colors = load_colors()
+                            state_mtime = mtime
+                    except OSError:
+                        pass
+
+                if now - last_track_check > 2.0:
+                    last_track_check = now
+                    track = current_track()
+                tooltip = track or "Music visualizer"
+
+                values = parse_values(line)
+                if values is None:
+                    continue
+                if max(values) == 0:
+                    silence += 1
+                else:
+                    silence = 0
+
+                if silence > 32:  # ~1.3 s at 24 FPS: hide the pill
+                    print(
+                        json.dumps({"text": "", "tooltip": tooltip}, ensure_ascii=False),
+                        flush=True,
+                    )
+                else:
+                    print(
+                        json.dumps(
+                            {"text": render(values, colors), "tooltip": tooltip},
+                            ensure_ascii=False,
+                        ),
+                        flush=True,
+                    )
+        except (BrokenPipeError, KeyboardInterrupt):
+            break
+        finally:
+            try:
+                _current_proc.terminate()
+            except OSError:
+                pass
+        time.sleep(1)
+
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

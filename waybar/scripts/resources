@@ -1,0 +1,127 @@
+#!/usr/bin/env python3
+"""Compact CPU + RAM module with a rich hover tooltip for Waybar."""
+
+from __future__ import annotations
+
+import json
+import os
+import shutil
+import subprocess
+import time
+from pathlib import Path
+
+
+def cpu_sample() -> tuple[int, int]:
+    with open("/proc/stat", encoding="utf-8") as handle:
+        fields = handle.readline().split()[1:]
+    values = [int(value) for value in fields]
+    idle = values[3] + (values[4] if len(values) > 4 else 0)
+    return sum(values), idle
+
+
+def cpu_percent() -> float:
+    total1, idle1 = cpu_sample()
+    time.sleep(0.22)
+    total2, idle2 = cpu_sample()
+    total_delta = total2 - total1
+    idle_delta = idle2 - idle1
+    if total_delta <= 0:
+        return 0.0
+    return max(0.0, min(100.0, (1.0 - idle_delta / total_delta) * 100.0))
+
+
+def memory() -> dict[str, float]:
+    values: dict[str, int] = {}
+    with open("/proc/meminfo", encoding="utf-8") as handle:
+        for line in handle:
+            key, raw = line.split(":", 1)
+            values[key] = int(raw.strip().split()[0])
+    total = values.get("MemTotal", 1)
+    available = values.get("MemAvailable", values.get("MemFree", 0))
+    used = total - available
+    swap_total = values.get("SwapTotal", 0)
+    swap_used = swap_total - values.get("SwapFree", swap_total)
+    return {
+        "used": used / 1024 / 1024,
+        "total": total / 1024 / 1024,
+        "pct": used / total * 100.0,
+        "swap_used": swap_used / 1024 / 1024,
+        "swap_total": swap_total / 1024 / 1024,
+        "swap_pct": (swap_used / swap_total * 100.0) if swap_total else 0.0,
+    }
+
+
+def top_processes() -> str:
+    try:
+        result = subprocess.run(
+            ["ps", "-eo", "comm=,pcpu=", "--sort=-pcpu", "--no-headers"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+        )
+        rows = []
+        for line in result.stdout.splitlines():
+            parts = line.rsplit(None, 1)
+            if len(parts) != 2:
+                continue
+            name, value = parts
+            try:
+                cpu = float(value)
+            except ValueError:
+                continue
+            if cpu <= 0:
+                continue
+            rows.append(f"{name} {cpu:.0f}%")
+            if len(rows) == 3:
+                break
+        return " · ".join(rows)
+    except Exception:
+        return ""
+
+
+def disk() -> tuple[float, float]:
+    try:
+        usage = shutil.disk_usage("/")
+        return usage.used / usage.total * 100.0, usage.free / 1024**3
+    except OSError:
+        return 0.0, 0.0
+
+
+def main() -> int:
+    cpu = cpu_percent()
+    mem = memory()
+    disk_pct, disk_free = disk()
+    load1, load5, load15 = os.getloadavg()
+    tops = top_processes()
+
+    text = f"{cpu:.0f}% · {mem['pct']:.0f}%"
+    tooltip_lines = [
+        f"CPU   {cpu:4.0f}%    load {load1:.2f} {load5:.2f} {load15:.2f}",
+        f"RAM   {mem['pct']:4.0f}%    {mem['used']:.1f} / {mem['total']:.1f} GiB",
+        f"Swap  {mem['swap_pct']:4.0f}%    {mem['swap_used']:.1f} GiB",
+        f"Disk  {disk_pct:4.0f}%    {disk_free:.1f} GiB free",
+    ]
+    if tops:
+        tooltip_lines.append(f"Top: {tops}")
+    tooltip_lines.append("Click to open btop")
+
+    peak = max(cpu, mem["pct"])
+    css_class = "critical" if peak >= 85 else "warning" if peak >= 60 else "normal"
+
+    print(
+        json.dumps(
+            {
+                "text": text,
+                "tooltip": "\n".join(tooltip_lines),
+                "class": css_class,
+            },
+            ensure_ascii=False,
+        ),
+        flush=True,
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

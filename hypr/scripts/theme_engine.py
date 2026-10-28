@@ -597,14 +597,15 @@ def apply_waybar(layout: str | None = None, position: str | None = None) -> dict
                         "format-ethernet": "󰈀", "format-disconnected": "󰤮"},
             "mpris": {"format": "{status_icon}"},
             "clock": {"format": "{:%H:%M}"},
-            "cpu": {"format": "{usage}%"},
-            "memory": {"format": "{percentage}%"},
+            "custom/resources": {"format": "󰍛"},
             "battery": {"format": "{icon}", "format-charging": "󰂄",
                         "format-plugged": "󰂅"},
-            "custom/updates": {"format": "󰏖 {}"},
         }.items():
             if module in config:
                 config[module].update(values)
+        # A horizontal spectrum does not fit a 72px column.
+        for key in ("modules-left", "modules-center", "modules-right"):
+            config[key] = [m for m in config.get(key, []) if m != "custom/cava"]
     else:
         config.setdefault("width", 620)
     (WAYBAR / "config.jsonc").write_text(

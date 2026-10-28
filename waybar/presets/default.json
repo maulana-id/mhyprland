@@ -12,24 +12,21 @@
   "modules-left": [
     "custom/launcher",
     "hyprland/workspaces",
-    "custom/theme",
-    "custom/wallpaper",
+    "custom/control",
     "idle_inhibitor",
     "tray",
-    "custom/updates",
     "power-profiles-daemon",
     "bluetooth",
     "network"
   ],
   "modules-center": [
-    "mpris"
+    "custom/cava"
   ],
   "modules-right": [
     "custom/hyprsunset",
     "backlight",
     "pulseaudio",
-    "memory",
-    "cpu",
+    "custom/resources",
     "custom/weather",
     "clock",
     "battery",

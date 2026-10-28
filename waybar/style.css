@@ -47,23 +47,21 @@ button {
 }
 
 #custom-launcher,
-#custom-theme,
-#custom-wallpaper,
+#custom-control,
 #custom-power,
 #custom-hyprsunset,
 #idle_inhibitor,
 #tray,
-#custom-updates,
 #power-profiles-daemon,
 #bluetooth,
 #network,
 #backlight,
 #pulseaudio,
-#memory,
-#cpu,
+#custom-resources,
 #custom-weather,
 #clock,
 #battery,
+#custom-cava,
 #mpris {
   margin: 3px 2px;
   padding: 0 8px;
@@ -83,16 +81,27 @@ button {
   color: @on_accent;
 }
 
-#custom-theme {
+#custom-control {
   color: @accent_alt;
 }
-#custom-wallpaper {
-  color: @accent;
-}
-#custom-theme:hover,
-#custom-wallpaper:hover {
+#custom-control:hover {
   background: alpha(@accent, 0.24);
   color: @fg;
+}
+
+#custom-resources.warning {
+  color: @gold;
+}
+#custom-resources.critical {
+  color: @red;
+}
+
+#custom-cava {
+  background: alpha(@accent, 0.10);
+  color: @fg;
+  font-size: 16px;
+  padding: 0 8px;
+  margin: 2px 4px;
 }
 
 /* Workspaces — clickable: left = switch, right = close workspace */
@@ -188,13 +197,6 @@ button {
   color: @muted;
 }
 
-#custom-updates.has-updates {
-  color: @gold;
-}
-#custom-updates.updated {
-  color: @muted;
-}
-
 #power-profiles-daemon.performance {
   color: @red;
 }
@@ -251,15 +253,6 @@ button {
   }
 }
 
-#cpu.warning,
-#memory.warning {
-  color: @gold;
-}
-#cpu.critical,
-#memory.critical {
-  color: @red;
-}
-
 #tray {
   background: transparent;
   padding: 0 6px;
@@ -283,14 +276,44 @@ tooltip label {
 
 /* Vertical bars: keep the pill narrow and readable */
 window#waybar.left #custom-launcher,
-window#waybar.left #custom-theme,
-window#waybar.left #custom-wallpaper,
+window#waybar.left #custom-control,
 window#waybar.left #custom-power,
 window#waybar.left #custom-hyprsunset,
 window#waybar.right #custom-launcher,
-window#waybar.right #custom-theme,
-window#waybar.right #custom-wallpaper,
+window#waybar.right #custom-control,
 window#waybar.right #custom-power,
 window#waybar.right #custom-hyprsunset {
   padding: 0 6px;
+}
+
+
+/* Native GtkMenu popup for the control button */
+menu {
+  background-color: alpha(@bg, 0.98);
+  border: 1px solid @border;
+  border-radius: 10px;
+  padding: 5px;
+}
+menu menuitem {
+  padding: 6px 14px;
+  border-radius: 6px;
+  color: @fg;
+}
+menu menuitem:hover {
+  background-color: @accent;
+  color: @on_accent;
+}
+menu menuitem:disabled {
+  color: @muted;
+}
+menu menuitem:disabled label {
+  color: @muted;
+}
+menu menuitem:hover label {
+  color: @on_accent;
+}
+menu separator {
+  background-color: @border;
+  min-height: 1px;
+  margin: 4px 2px;
 }
