@@ -18,6 +18,7 @@ centre for switching themes, wallpapers, Waybar layouts and compositor toggles.
 | **Resource hover** | CPU + RAM in one pill; hover for load, swap, disk and top processes. |
 | **Bass visualizer** | 12-bar cava spectrum in the bar centre, only while audio is playing. |
 | **Themed kitty** | Fonts, padding, opacity, blur, powerline tabs, 16-colour terminal palette. |
+| **Themed launcher** | Hyprlauncher uses a generated Hyprtoolkit palette plus a custom launcher config. |
 | **Themed hyprlock** | Wallpaper background, blurred clock/date, themed password field, user@host footer. |
 | **Themed dunst** | Notifications that follow the same palette (and now actually autostart). |
 | **Dotfiles repo** | Git allowlist that tracks only the Hypr ecosystem. |
@@ -101,6 +102,7 @@ Then `theme-switch set my-theme`. A theme change updates:
 - `hypr/hyprlock.conf` — generated from `hypr/templates/hyprlock.conf.in`
 - `hypr/hyprpaper.conf` — generated from `hypr/templates/hyprpaper.conf.in`
 - `dunst/dunstrc` — generated from `hypr/templates/dunstrc.in`
+- `hypr/hyprtoolkit.conf` — the palette used by hyprlauncher and other Hyprtoolkit apps
 
 Waybar reloads with `SIGUSR2`, kitty with `SIGUSR1`, dunst with `dunstctl reload`, and Hyprland with
 `hyprctl reload`. The Control Center polls the state file, so it updates live if you change a theme
@@ -266,6 +268,21 @@ background blur, powerline tabs, and a 10k-line scrollback. Colours are imported
 
 ![Themed kitty](hypr/assets/screenshot-kitty.png)
 
+## Launcher & notifications
+
+**Hyprlauncher** is themed through Hyprtoolkit, not CSS. `theme-switch` generates
+`hypr/hyprtoolkit.conf` with the same Ascent/Nord/etc. palette, and `hypr/hyprlauncher.conf` controls
+the launcher itself: focus grab, icon finder, `kitty` for terminal entries and a 480×320 window.
+Installed hyprlauncher 0.1.6 doesn't support `show_apps_on_open`, so type to search or pass
+`--options "…"` for a quick picker.
+
+![Themed Hyprlauncher](hypr/assets/screenshot-hyprlauncher.png)
+
+**Dunst** is fully themed: `dunst/dunstrc` is generated from the active palette and `dunstctl reload`
+runs on every theme switch. It is autostarted by Hyprland, and the config is tracked in this repo.
+
+![Themed dunst notification](hypr/assets/screenshot-dunst.png)
+
 ## Repository layout
 
 ```text
@@ -277,6 +294,8 @@ background blur, powerline tabs, and a 10k-line scrollback. Colours are imported
 │   ├── hypridle.conf
 │   ├── hyprlock.conf          # generated
 │   ├── hyprpaper.conf         # generated
+│   ├── hyprtoolkit.conf       # generated — launcher/hyprshutdown palette
+│   ├── hyprlauncher.conf      # launcher behaviour/window
 │   ├── theme.lua              # generated
 │   ├── theme-state.json       # current theme/wallpaper/options
 │   ├── themes/*.toml
@@ -340,6 +359,10 @@ actually playing.
 **Control menu does not open.** `waybar/control-menu.xml` must exist and be valid XML. Check
 `~/.cache/waybar.log` for `Error while creating the menu`; the gear uses Waybar's native
 `menu`/`menu-file` support, so it needs Waybar 0.12+ (it is in this repo).
+
+**Hyprlauncher config errors.** Installed hyprlauncher 0.1.6 does not know
+`general:show_apps_on_open`; this repo's `hyprlauncher.conf` only uses supported keys. Check the
+daemon log for `Error in config` after changing it.
 
 **Wallpaper does not change.** Check `pgrep -x hyprpaper` and
 `hyprctl hyprpaper listactive`. Run `wallpaper-set ~/Pictures/Wallpapers/hyprland-0.png` to force a

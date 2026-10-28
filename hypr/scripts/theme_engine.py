@@ -343,6 +343,35 @@ def _template_values(theme: dict, state: dict) -> dict[str, str]:
     return values
 
 
+def render_hyprtoolkit(theme: dict, state: dict) -> str:
+    c = theme["colors"]
+
+    def argb(color: str) -> str:
+        return "0xFF" + _hex(color).upper()
+
+    return f"""# Generated from hypr/themes/{theme['slug']}.toml — do not edit.
+# Hyprlauncher, hyprshutdown and other Hyprtoolkit apps read this palette.
+background = {argb(c['bg'])}
+base = {argb(c['surface'])}
+text = {argb(c['fg'])}
+alternate_base = {argb(c['surface_alt'])}
+bright_text = {argb(c['on_bg'])}
+link_text = {argb(c['cyan'])}
+accent = {argb(c['accent'])}
+accent_secondary = {argb(c['accent_alt'])}
+rounding_large = 12
+rounding_small = 6
+h1_size = 19
+h2_size = 15
+h3_size = 13
+font_size = 11
+small_font_size = 10
+icon_theme =
+font_family = Noto Sans
+font_family_monospace = JetBrainsMono Nerd Font
+"""
+
+
 def render_hyprlock(theme: dict, state: dict) -> str:
     values = _template_values(theme, state)
     for key, value in theme["colors"].items():
@@ -370,6 +399,7 @@ def render_all(theme: dict | None = None, state: dict | None = None) -> list[Pat
         (HYPR / "hyprlock.conf", render_hyprlock(theme, state)),
         (HYPR / "hyprpaper.conf", render_hyprpaper(theme, state)),
         (DUNST / "dunstrc", render_dunst(theme, state)),
+        (HYPR / "hyprtoolkit.conf", render_hyprtoolkit(theme, state)),
     ]
     for path, text in targets:
         if write_if_changed(path, text):
