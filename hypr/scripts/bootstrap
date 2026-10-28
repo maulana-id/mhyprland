@@ -108,7 +108,7 @@ fi
 
 say "Starting desktop services"
 if command -v hyprctl >/dev/null 2>&1 && hyprctl version >/dev/null 2>&1; then
-    pgrep -x waybar >/dev/null || setsid waybar >/dev/null 2>&1 < /dev/null &
+    pgrep -x waybar >/dev/null || setsid "$CONFIG/waybar/scripts/start-waybar" >/dev/null 2>&1 < /dev/null &
     pgrep -x dunst >/dev/null || setsid dunst >/dev/null 2>&1 < /dev/null &
     if ! pgrep -x hyprpaper >/dev/null; then
         if command -v hyprpaper >/dev/null 2>&1; then

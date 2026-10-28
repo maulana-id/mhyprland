@@ -13,7 +13,7 @@ centre for switching themes, wallpapers, Waybar layouts and compositor toggles.
 | **6 palettes** | Ascent (default), Ascent Dawn (light), Catppuccin Mocha, Gruvbox Dark, Nord, Rosé Pine. |
 | **Hypr Control Center** | GTK3 cockpit: theme cards, wallpaper thumbnails, Waybar presets, compositor toggles, keybind cheat sheet. |
 | **hyprpaper + picker** | Wallpaper changing with a GUI, directory slideshows, fit modes, random wallpaper. |
-| **Clickable Waybar** | Workspaces activate on left-click, close on right-click; theme/wallpaper buttons; 4 layout presets; 4 bar positions. |
+| **Clickable Waybar** | Workspaces activate on left-click, close on right-click — including a Lua IPC shim for Waybar 0.12 on Hyprland 0.55. Theme/wallpaper buttons; 4 layout presets; 4 bar positions. |
 | **Themed kitty** | Fonts, padding, opacity, blur, powerline tabs, 16-colour terminal palette. |
 | **Themed hyprlock** | Wallpaper background, blurred clock/date, themed password field, user@host footer. |
 | **Themed dunst** | Notifications that follow the same palette (and now actually autostart). |
@@ -147,6 +147,28 @@ waybar-mode --list
 Presets live in `waybar/presets/`; shared module definitions are in `_modules.json`. When you change
 a preset, the engine writes the merged result to `waybar/config.jsonc` and restarts Waybar.
 
+### Hyprland 0.55 IPC shim
+
+Debian's Waybar 0.12 sends legacy commands such as `dispatch workspace 2` to Hyprland. Hyprland
+0.55 uses the Lua config provider and parses command-socket dispatches as Lua, so the legacy form
+fails — that is why workspace buttons can look dead even with `on-click: activate`.
+
+`waybar/scripts/start-waybar` starts a tiny Unix-socket proxy (`waybar-ipc-proxy.py`) and launches
+Waybar with a proxy `HYPRLAND_INSTANCE_SIGNATURE`. The proxy rewrites the legacy workspace,
+special-workspace, `exec` and `exit` dispatches and forwards everything else (JSON queries, events)
+to the real session. The bar's event socket is a symlink to the real `.socket2.sock`, so workspace
+updates still arrive.
+
+```bash
+# manual start / restart (autostart and waybar-mode use this too)
+~/.config/waybar/scripts/start-waybar
+tail -f ~/.cache/waybar-ipc-proxy.log
+```
+
+If you later upgrade to Waybar 0.15+, it detects the Lua protocol itself and the shim can be removed;
+the rest of the config works with both versions. If the proxy cannot start it falls back to the real
+socket (the bar still works, only legacy clicks fail).
+
 ![Waybar layouts](hypr/assets/screenshot-waybar.png)
 
 ## Hypr Control Center
@@ -233,7 +255,11 @@ background blur, powerline tabs, and a 10k-line scrollback. Colours are imported
 │   ├── colors.css             # generated
 │   ├── style.css
 │   ├── presets/{_modules,default,compact,minimal,focus}.json
-│   ├── scripts/{updates.sh,hyprsunset-slider.py}
+│   ├── scripts/
+│   │   ├── start-waybar
+│   │   ├── waybar-ipc-proxy.py
+│   │   ├── updates.sh
+│   │   └── hyprsunset-slider.py
 │   └── wttrbar
 ├── kitty/
 │   ├── kitty.conf
@@ -272,6 +298,12 @@ known-good PNG. If hyprpaper is missing, `bootstrap` installs it locally or use
 
 **Waybar CSS import.** `style.css` starts with `@import url("colors.css");`. If you copy just
 `style.css` somewhere else, copy `colors.css` too or re-run `theme-switch apply`.
+
+**Workspace buttons do nothing.** Make sure Waybar was started through
+`waybar/scripts/start-waybar`, not the bare `waybar` binary. Check
+`~/.cache/waybar-ipc-proxy.log`; a line like
+`rewrite: 'dispatch workspace 2' -> 'dispatch hl.dsp.focus({ workspace = "2" })'` means the shim is
+active. `waybar-mode` and the Hyprland autostart both use the wrapper automatically.
 
 **Hyprland version.** The config uses Hyprland's Lua provider (`hyprland.lua` + `require`). On older
 versions convert back to `hyprland.conf` or update Hyprland.

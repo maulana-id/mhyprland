@@ -403,8 +403,10 @@ def reload_dunst() -> None:
 def restart_waybar() -> bool:
     run(["pkill", "-x", "waybar"])
     time.sleep(0.35)
+    launcher = WAYBAR / "scripts" / "start-waybar"
+    command = [str(launcher)] if launcher.exists() else ["waybar"]
     subprocess.Popen(
-        ["waybar"],
+        command,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         start_new_session=True,

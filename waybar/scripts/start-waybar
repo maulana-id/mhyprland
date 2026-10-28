@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# Start Waybar through a tiny IPC proxy so its 0.12 workspace-click dispatches
+# work on Hyprland 0.55's Lua config provider. Falls back to the real socket if
+# the proxy cannot start.
+
+set -euo pipefail
+
+RUNTIME="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/hypr"
+REAL="${HYPRLAND_INSTANCE_SIGNATURE:-}"
+
+# If we were launched from a process already inside the shim, recover the real
+# signature from the proxy directory instead of nesting proxies.
+if [[ "$REAL" == waybar-* ]]; then
+    REAL="$(cat "$RUNTIME/$REAL/real-sig" 2>/dev/null || true)"
+fi
+
+if [ -z "$REAL" ]; then
+    exec waybar "$@"
+fi
+
+PROXY="waybar-${REAL:0:12}"
+DIR="$RUNTIME/$PROXY"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+mkdir -p "$DIR"
+chmod 700 "$DIR" 2>/dev/null || true
+
+proxy_alive=0
+if [ -f "$DIR/proxy.pid" ] && [ -S "$DIR/.socket.sock" ]; then
+    pid="$(cat "$DIR/proxy.pid" 2>/dev/null || true)"
+    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+        proxy_alive=1
+    fi
+fi
+
+if [ "$proxy_alive" -eq 0 ]; then
+    rm -f "$DIR/.socket.sock" "$DIR/proxy.pid"
+    setsid python3 "$SCRIPT_DIR/waybar-ipc-proxy.py" "$REAL" "$PROXY" \
+        >"${XDG_CACHE_HOME:-$HOME/.cache}/waybar-ipc-proxy.log" 2>&1 < /dev/null &
+    for _ in $(seq 1 60); do
+        [ -S "$DIR/.socket.sock" ] && break
+        sleep 0.05
+    done
+fi
+
+if [ ! -S "$DIR/.socket.sock" ]; then
+    echo "waybar-ipc-proxy failed to start; using the real Hyprland socket" >&2
+    exec env HYPRLAND_INSTANCE_SIGNATURE="$REAL" waybar "$@"
+fi
+
+exec env HYPRLAND_INSTANCE_SIGNATURE="$PROXY" waybar "$@"

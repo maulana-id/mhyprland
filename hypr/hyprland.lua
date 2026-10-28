@@ -73,7 +73,7 @@ hl.on("hyprland.start", function()
     -- 3. Start your apps
     -- hl.exec_cmd("systemctl --user start hyprpolkitagent")
     hl.exec_cmd("/usr/libexec/hyprpolkitagent &")
-    hl.exec_cmd("waybar")
+    hl.exec_cmd("$HOME/.config/waybar/scripts/start-waybar")
     hl.exec_cmd("dunst")
     hl.exec_cmd("hypridle")
     hl.exec_cmd("hyprsunset")
