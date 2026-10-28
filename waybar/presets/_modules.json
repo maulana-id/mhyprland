@@ -1,0 +1,239 @@
+{
+  "custom/launcher": {
+    "format": "",
+    "tooltip-format": "Applications\nLeft: launcher · Right: terminal",
+    "on-click": "hyprlauncher",
+    "on-click-right": "kitty"
+  },
+  "hyprland/workspaces": {
+    "format": "{icon}",
+    "format-icons": {
+      "1": "一",
+      "2": "二",
+      "3": "三",
+      "4": "四",
+      "5": "五",
+      "6": "六",
+      "7": "七",
+      "8": "八",
+      "9": "九",
+      "10": "十",
+      "default": "◉"
+    },
+    "persistent-workspaces": {
+      "*": 6
+    },
+    "all-outputs": true,
+    "move-to-monitor": true,
+    "disable-scroll": true,
+    "sort-by": "number",
+    "on-click": "activate",
+    "on-click-right": "close",
+    "tooltip": false
+  },
+  "custom/theme": {
+    "exec": "$HOME/.config/hypr/scripts/theme-switch current",
+    "interval": 2,
+    "format": "󰏘",
+    "tooltip-format": "Theme: {}\nScroll to cycle · Click for Control Center",
+    "on-click": "$HOME/.config/hypr/scripts/hypr-control-center --tab theme",
+    "on-scroll-up": "$HOME/.config/hypr/scripts/theme-switch next",
+    "on-scroll-down": "$HOME/.config/hypr/scripts/theme-switch prev"
+  },
+  "custom/wallpaper": {
+    "format": "󰸉",
+    "tooltip-format": "Wallpaper\nLeft: picker · Right: random",
+    "on-click": "$HOME/.config/hypr/scripts/hypr-control-center --tab wallpaper",
+    "on-click-right": "$HOME/.config/hypr/scripts/wallpaper-set --random",
+    "on-scroll-up": "$HOME/.config/hypr/scripts/wallpaper-set --random"
+  },
+  "custom/hyprsunset": {
+    "format": "󰌵",
+    "tooltip-format": "Hyprsunset Dimmer\nLeft: open sliders · Scroll: quick adjust",
+    "on-click": "python3 $HOME/.config/waybar/scripts/hyprsunset-slider.py",
+    "on-scroll-up": "hyprctl hyprsunset gamma +5",
+    "on-scroll-down": "hyprctl hyprsunset gamma -5"
+  },
+  "custom/updates": {
+    "exec": "$HOME/.config/waybar/scripts/updates.sh",
+    "return-type": "json",
+    "interval": 3600,
+    "format": "󰏖 {}",
+    "tooltip": true
+  },
+  "custom/power": {
+    "format": "⏻",
+    "tooltip-format": "Power menu",
+    "on-click": "hyprshutdown"
+  },
+  "custom/weather": {
+    "format": "{}°",
+    "tooltip": true,
+    "interval": 900,
+    "exec": "$HOME/.config/waybar/wttrbar --nerd --location Salatiga",
+    "return-type": "json"
+  },
+  "power-profiles-daemon": {
+    "format": "{icon}",
+    "tooltip-format": "Power profile: {profile}\nDriver: {driver}",
+    "tooltip": true,
+    "format-icons": {
+      "performance": "",
+      "balanced": "",
+      "power-saver": "󰁳"
+    }
+  },
+  "cpu": {
+    "interval": 5,
+    "format": " {usage:02}%",
+    "tooltip-format": "CPU {usage}% · {avg_frequency} GHz",
+    "on-click": "kitty -e btop",
+    "states": {
+      "warning": 55,
+      "critical": 85
+    }
+  },
+  "memory": {
+    "interval": 5,
+    "format": " {used:0.1f} GiB",
+    "tooltip-format": "RAM {percentage}%\n{used:0.1f} GB / {total:0.1f} GB",
+    "on-click": "kitty -e btop",
+    "states": {
+      "warning": 60,
+      "critical": 85
+    }
+  },
+  "backlight": {
+    "format": "{icon}",
+    "tooltip": true,
+    "tooltip-format": "Brightness: {percent}%",
+    "format-alt": "{percent}%",
+    "format-alt-click": "click-right",
+    "format-icons": [
+      "󰃜",
+      "󰃝",
+      "󰃞",
+      "󰃟",
+      "󰃠"
+    ],
+    "on-scroll-down": "brightnessctl s 5%-",
+    "on-scroll-up": "brightnessctl s +5%"
+  },
+  "pulseaudio": {
+    "format": "{icon}",
+    "tooltip-format": "Volume: {volume}%\nLeft: mixer · Right: mute",
+    "on-click": "sh -c 'command -v pavucontrol >/dev/null && pavucontrol || kitty -e alsamixer'",
+    "on-click-right": "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle",
+    "scroll-step": 5,
+    "format-muted": "",
+    "format-icons": {
+      "headphone": "",
+      "headset": "",
+      "default": [
+        "",
+        "",
+        ""
+      ]
+    }
+  },
+  "network": {
+    "format": "{icon} {essid}",
+    "format-wifi": "{icon} {essid}",
+    "format-ethernet": "󰈀 wired",
+    "format-disconnected": "󰤮 offline",
+    "format-icons": [
+      "󰤯",
+      "󰤟",
+      "󰤢",
+      "󰤥",
+      "󰤨"
+    ],
+    "tooltip-format-wifi": "{essid} ({signalStrength}%)\n⇣ {bandwidthDownBytes}  ⇡ {bandwidthUpBytes}",
+    "tooltip-format-ethernet": "Ethernet\n⇣ {bandwidthDownBytes}  ⇡ {bandwidthUpBytes}",
+    "tooltip-format-disconnected": "Disconnected",
+    "interval": 5,
+    "on-click": "kitty -e nmtui"
+  },
+  "bluetooth": {
+    "format": "󰂲",
+    "format-disabled": "󰂲",
+    "format-connected": "󰂱 {num_connections}",
+    "tooltip-format": "{controller_alias}\n{num_connections} connected",
+    "on-click": "blueman-manager"
+  },
+  "battery": {
+    "format": "{capacity}% {icon}",
+    "format-charging": "{capacity}% 󰂄",
+    "format-plugged": " plugged",
+    "format-icons": {
+      "charging": [
+        "󰢜",
+        "󰂆",
+        "󰂇",
+        "󰂈",
+        "󰢝",
+        "󰂉",
+        "󰢞",
+        "󰂊",
+        "󰂋",
+        "󰂅"
+      ],
+      "default": [
+        "󰁺",
+        "󰁻",
+        "󰁼",
+        "󰁽",
+        "󰁾",
+        "󰁿",
+        "󰂀",
+        "󰂁",
+        "󰂂",
+        "󰁹"
+      ]
+    },
+    "tooltip-format-discharging": "{power:>1.0f}W ↓ · {capacity}%",
+    "tooltip-format-charging": "{power:>1.0f}W ↑ · {capacity}%",
+    "interval": 5,
+    "states": {
+      "warning": 20,
+      "critical": 10
+    }
+  },
+  "clock": {
+    "format": "{:%a %d %b  %H:%M}",
+    "tooltip-format": "<tt><small>{calendar}</small></tt>"
+  },
+  "mpris": {
+    "format": "{status_icon} {dynamic}",
+    "format-paused": "{status_icon} {dynamic}",
+    "interval": 5,
+    "dynamic-order": [
+      "artist",
+      "position",
+      "length"
+    ],
+    "dynamic-importance-order": [
+      "position",
+      "length",
+      "artist"
+    ],
+    "tooltip-format": "{player} ({status})\n{artist} - {title}",
+    "max-length": 50,
+    "status-icons": {
+      "paused": "󰝛"
+    }
+  },
+  "idle_inhibitor": {
+    "format": "{icon}",
+    "tooltip-format-activated": "Stay awake: ON",
+    "tooltip-format-deactivated": "Stay awake: OFF",
+    "format-icons": {
+      "activated": "󱎴",
+      "deactivated": "󰷛"
+    }
+  },
+  "tray": {
+    "icon-size": 14,
+    "spacing": 3
+  }
+}

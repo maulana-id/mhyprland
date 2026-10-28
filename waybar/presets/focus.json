@@ -1,0 +1,25 @@
+{
+  "layer": "top",
+  "position": "top",
+  "exclusive": true,
+  "gtk-layer-shell": true,
+  "reload_style_on_change": true,
+  "width": 620,
+  "height": 38,
+  "spacing": 4,
+  "margin-top": 0,
+  "margin-bottom": 0,
+  "modules-left": [
+    "hyprland/workspaces",
+    "custom/theme"
+  ],
+  "modules-center": [
+    "mpris"
+  ],
+  "modules-right": [
+    "cpu",
+    "memory",
+    "clock",
+    "battery"
+  ]
+}

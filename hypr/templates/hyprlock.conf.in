@@ -1,0 +1,109 @@
+# Generated from ~/.config/hypr/themes/${theme_slug}.toml
+# Edit hypr/templates/hyprlock.conf.in, then run `theme-switch apply`.
+
+general {
+    hide_cursor = true
+    ignore_empty_input = false
+    fail_timeout = 2000
+}
+
+auth {
+    pam {
+        enabled = true
+    }
+}
+
+animations {
+    enabled = true
+    bezier = linear, 1, 1, 0, 0
+    animation = fadeIn, 1, 5, linear
+    animation = fadeOut, 1, 5, linear
+    animation = inputFieldDots, 1, 2, linear
+}
+
+background {
+    monitor =
+    path = ${wallpaper}
+    color = ${bg}
+    blur_passes = ${blur_passes}
+    blur_size = 8
+    noise = 0.015
+    contrast = 0.9
+    brightness = 0.8
+    vibrancy = 0.2
+}
+
+input-field {
+    monitor =
+    size = 320, 56
+    outline_thickness = 2
+    dots_size = 0.22
+    dots_spacing = 0.35
+    dots_center = true
+
+    outer_color = ${accent} ${accent_alt} 45deg
+    inner_color = ${surface_alpha}
+    font_color = ${fg}
+    check_color = ${green}
+    fail_color = ${red}
+    capslock_color = ${gold}
+    numlock_color = ${gold}
+    bothlock_color = ${accent}
+
+    fade_on_empty = false
+    rounding = ${rounding}
+    placeholder_text = <span foreground="${muted_hex}">Enter password…</span>
+    fail_text = <i>$PAMFAIL</i>
+
+    position = 0, -56
+    halign = center
+    valign = center
+}
+
+# Big clock
+label {
+    monitor =
+    text = $TIME
+    color = ${fg}
+    font_size = 86
+    font_family = ${font}
+    position = 0, 120
+    halign = center
+    valign = center
+}
+
+# Date line
+label {
+    monitor =
+    text = cmd[update:60000] date +"%A, %d %B %Y"
+    color = ${accent}
+    font_size = 18
+    font_family = ${font}
+    position = 0, 42
+    halign = center
+    valign = center
+}
+
+# User + host
+label {
+    monitor =
+    text = cmd[update:3600000] echo "$USER@$(hostname)"
+    color = ${fg_dim}
+    font_size = 14
+    font_family = ${font}
+    position = 0, -150
+    halign = center
+    valign = center
+}
+
+# Small unlock hint
+label {
+    monitor =
+    text = <span foreground="${muted_hex}">enter to unlock  ·  esc to clear</span>
+    color = ${muted}
+    font_size = 12
+    font_family = ${font}
+    position = 0, -128
+    halign = center
+    valign = center
+}

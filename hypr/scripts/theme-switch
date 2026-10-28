@@ -1,0 +1,119 @@
+#!/usr/bin/env python3
+"""Switch the Hyprland desktop palette.
+
+Examples:
+    theme-switch                 # show current theme
+    theme-switch list            # list themes
+    theme-switch set nord        # apply a theme everywhere
+    theme-switch next            # cycle themes
+    theme-switch option blur on  # persist a Hyprland look-and-feel toggle
+    theme-switch apply           # re-render files from the current state
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import theme_engine as engine  # noqa: E402
+
+
+def print_theme(slug: str) -> None:
+    theme = engine.load_theme(slug)
+    marker = "*" if slug == engine.current_theme_slug() else " "
+    print(f" {marker} {slug:<18} {theme['name']:<18} {theme['variant']:<6} {theme['accent_name']}")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(prog="theme-switch", description=__doc__,
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = parser.add_subparsers(dest="command")
+
+    sub.add_parser("list", help="list available themes")
+    sub.add_parser("current", help="print the active theme slug")
+    sub.add_parser("next", help="apply the next theme")
+    sub.add_parser("prev", help="apply the previous theme")
+    sub.add_parser("apply", help="re-render all theme files from the current state")
+
+    set_p = sub.add_parser("set", help="apply a theme by slug")
+    set_p.add_argument("slug")
+    set_p.add_argument("--wallpaper", help="also set this wallpaper")
+    set_p.add_argument("--fit", choices=sorted(engine.FIT_MODES), help="wallpaper fit mode")
+
+    opt_p = sub.add_parser("option", help="change a persisted look-and-feel option")
+    opt_p.add_argument("key", choices=["blur", "animations", "shadow", "rounding",
+                                       "gaps_in", "gaps_out", "border_size"])
+    opt_p.add_argument("value")
+
+    status_p = sub.add_parser("status", help="print JSON status")
+    status_p.add_argument("--pretty", action="store_true")
+
+    args = parser.parse_args()
+
+    if args.command == "list":
+        print(f" {'':1} {'slug':<18} {'name':<18} {'variant':<6} accent")
+        for slug in engine.theme_slugs():
+            print_theme(slug)
+        return 0
+
+    if args.command == "current":
+        print(engine.current_theme_slug())
+        return 0
+
+    if args.command == "show":
+        theme = engine.load_theme()
+        print(json.dumps(theme, indent=2))
+        return 0
+
+    if args.command in {"next", "prev"}:
+        slug = engine.next_theme(1 if args.command == "next" else -1)
+        print(f"theme → {slug}")
+        return 0
+
+    if args.command == "set":
+        slug = args.slug
+        if slug not in engine.theme_slugs():
+            print(f"unknown theme: {slug}", file=sys.stderr)
+            print("available: " + ", ".join(engine.theme_slugs()), file=sys.stderr)
+            return 2
+        engine.apply_theme(slug)
+        if args.wallpaper:
+            engine.set_wallpaper(args.wallpaper, args.fit)
+        print(f"theme → {slug}")
+        return 0
+
+    if args.command == "option":
+        state = engine.set_option(args.key, args.value)
+        print(f"{args.key} → {state[args.key]}")
+        return 0
+
+    if args.command == "apply":
+        state = engine.apply_theme()
+        print(f"theme → {state['theme']}")
+        return 0
+
+    if args.command == "status":
+        print(json.dumps(engine.status(), indent=2 if args.pretty else None))
+        return 0
+
+    # no command: current summary
+    status = engine.status()
+    print(f"theme:     {status['theme']} ({status['theme_name']})")
+    print(f"wallpaper: {status['wallpaper']}")
+    print(f"waybar:    {status['waybar_layout']} / {status['bar_position']}")
+    print()
+    for slug in engine.theme_slugs():
+        print_theme(slug)
+    print("\nusage: theme-switch {list|set <slug>|next|prev|apply|option <key> <value>|status}")
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except (FileNotFoundError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        raise SystemExit(1)

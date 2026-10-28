@@ -1,0 +1,49 @@
+#!/usr/bin/env python3
+"""Switch Waybar layout presets and bar position.
+
+Examples:
+    waybar-mode --layout compact
+    waybar-mode --position bottom
+    waybar-mode --layout minimal --position left
+    waybar-mode --list
+"""
+
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import theme_engine as engine  # noqa: E402
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(prog="waybar-mode", description=__doc__,
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--layout", help="preset name (see --list)")
+    parser.add_argument("--position", choices=["top", "bottom", "left", "right"])
+    parser.add_argument("--list", action="store_true")
+    args = parser.parse_args()
+
+    if args.list:
+        print("layouts: " + ", ".join(engine.waybar_presets()))
+        status = engine.status()
+        print(f"current: {status['waybar_layout']} / {status['bar_position']}")
+        return 0
+
+    if not args.layout and not args.position:
+        parser.print_help()
+        return 2
+
+    state = engine.apply_waybar(args.layout, args.position)
+    print(f"waybar → {state['waybar_layout']} / {state['bar_position']}")
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except (FileNotFoundError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        raise SystemExit(1)

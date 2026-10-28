@@ -1,0 +1,15 @@
+# This repository lives inside ~/.config, so start by ignoring everything.
+# Only the Hypr desktop ecosystem is un-ignored below. KDE, Code, Brave,
+# gh, session data and every other application config stay out of Git.
+/*
+!/.gitignore
+!/README.md
+!/hypr/
+!/waybar/
+!/kitty/
+!/dunst/
+
+# Runtime noise / local backups
+.dotfiles-backup/
+**/__pycache__/
+*.py[cod]

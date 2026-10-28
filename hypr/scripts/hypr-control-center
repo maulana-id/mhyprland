@@ -1,0 +1,1393 @@
+#!/usr/bin/env python3
+"""Hypr Control Center — a small GTK3 cockpit for themes, wallpapers and Waybar."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+import gi
+
+gi.require_version("Gtk", "3.0")
+gi.require_version("Gdk", "3.0")
+gi.require_version("GdkPixbuf", "2.0")
+from gi.repository import Gdk, GdkPixbuf, Gio, GLib, Gtk, Pango  # noqa: E402
+
+SCRIPTS = Path(__file__).resolve().parent
+sys.path.insert(0, str(SCRIPTS))
+import theme_engine as engine  # noqa: E402
+
+APP_ID = "land.hypr.ControlCenter"
+PAGES = [
+    ("theme", "󰏘", "Themes"),
+    ("wallpaper", "󰸉", "Wallpaper"),
+    ("bar", "󰕘", "Waybar"),
+    ("desktop", "󰒓", "Desktop"),
+    ("keys", "󰌌", "Keybinds"),
+]
+LAYOUT_INFO = {
+    "default": ("Default", "Everything: workspaces, media, tray, system and power."),
+    "compact": ("Compact", "Launcher, media, audio/network, clock and battery."),
+    "minimal": ("Minimal", "Only workspaces, clock and battery."),
+    "focus": ("Focus", "Workspaces, media, CPU/RAM, clock and battery."),
+}
+
+
+# --------------------------------------------------------------------------- #
+# small GTK helpers
+# --------------------------------------------------------------------------- #
+def lbl(text: str = "", css: str | None = None, *, markup: bool = False,
+        wrap: bool = False, selectable: bool = False, xalign: float = 0.0) -> Gtk.Label:
+    widget = Gtk.Label()
+    if markup:
+        widget.set_markup(text)
+    else:
+        widget.set_text(text)
+    widget.set_xalign(xalign)
+    widget.set_line_wrap(wrap)
+    widget.set_selectable(selectable)
+    if css:
+        for name in css.split():
+            widget.get_style_context().add_class(name)
+    return widget
+
+
+def hbox(spacing: int = 8, **kwargs) -> Gtk.Box:
+    return Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=spacing, **kwargs)
+
+
+def vbox(spacing: int = 8, **kwargs) -> Gtk.Box:
+    return Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=spacing, **kwargs)
+
+
+def button(text: str, css: str, callback, *, icon: str | None = None) -> Gtk.Button:
+    widget = Gtk.Button()
+    widget.set_relief(Gtk.ReliefStyle.NONE)
+    widget.get_style_context().add_class("action")
+    if css:
+        for name in css.split():
+            widget.get_style_context().add_class(name)
+    box = hbox(6)
+    if icon:
+        box.pack_start(lbl(icon, "action-icon"), False, False, 0)
+    box.pack_start(lbl(text), False, False, 0)
+    widget.add(box)
+    widget.connect("clicked", lambda *_: callback())
+    return widget
+
+
+def section_title(title: str, subtitle: str = "") -> Gtk.Box:
+    box = vbox(2)
+    box.pack_start(lbl(title, "page-title"), False, False, 0)
+    if subtitle:
+        box.pack_start(lbl(subtitle, "page-sub", wrap=True), False, False, 0)
+    return box
+
+
+def swatch(color: str, width: int = 24, height: int = 18) -> Gtk.EventBox:
+    box = Gtk.EventBox()
+    box.set_size_request(width, height)
+    rgba = Gdk.RGBA()
+    if rgba.parse(color):
+        box.override_background_color(Gtk.StateFlags.NORMAL, rgba)
+    box.set_margin_end(4)
+    return box
+
+
+# --------------------------------------------------------------------------- #
+# application
+# --------------------------------------------------------------------------- #
+class ControlCenter(Gtk.Application):
+    def __init__(self, tab: str = "theme"):
+        super().__init__(
+            application_id=APP_ID,
+            flags=Gio.ApplicationFlags.HANDLES_COMMAND_LINE,
+        )
+        self.tab = tab if tab in {p[0] for p in PAGES} else "theme"
+        self.window: Gtk.ApplicationWindow | None = None
+        self.stack: Gtk.Stack | None = None
+        self.nav_buttons: dict[str, Gtk.Button] = {}
+        self.theme_cards: dict[str, Gtk.Button] = {}
+        self.theme_active_labels: dict[str, Gtk.Label] = {}
+        self.layout_cards: dict[str, Gtk.Button] = {}
+        self.position_buttons: dict[str, Gtk.Button] = {}
+        self.wallpaper_cards: dict[str, Gtk.Button] = {}
+        self.wallpaper_flow: Gtk.FlowBox | None = None
+        self.fit_combo: Gtk.ComboBoxText | None = None
+        self.header_theme: Gtk.Label | None = None
+        self.footer_theme: Gtk.Label | None = None
+        self.status_label: Gtk.Label | None = None
+        self.info_labels: dict[str, Gtk.Label] = {}
+        self.switches: dict[str, Gtk.Switch] = {}
+        self.scales: dict[str, Gtk.Scale] = {}
+        self.value_labels: dict[str, Gtk.Label] = {}
+        self._css_provider: Gtk.CssProvider | None = None
+        self._status_source: int | None = None
+        self._pending_options: dict[str, int] = {}
+        self._syncing = False
+        self._built = False
+
+    # ------------------------------------------------------------------ #
+    # window scaffolding
+    # ------------------------------------------------------------------ #
+    def do_command_line(self, command_line) -> int:
+        args = command_line.get_arguments()
+        if "--tab" in args:
+            index = args.index("--tab")
+            if index + 1 < len(args):
+                candidate = args[index + 1]
+                if candidate in {page[0] for page in PAGES}:
+                    self.tab = candidate
+        self.do_activate()
+        return 0
+
+    def do_activate(self) -> None:
+        if not self._built:
+            self.build_window()
+            self._built = True
+        elif self.stack is not None:
+            self.show_page(self.tab)
+        self.window.present()
+
+    def build_window(self) -> None:
+        self.window = Gtk.ApplicationWindow(application=self, title="Hypr Control Center")
+        self.window.set_default_size(1000, 700)
+        self.window.set_position(Gtk.WindowPosition.CENTER)
+        self.window.set_decorated(False)
+        self.window.set_icon_name("preferences-desktop-theme")
+        self.window.connect("key-press-event", self.on_key_press)
+
+        root = vbox(0)
+        self.window.add(root)
+
+        root.pack_start(self.make_topbar(), False, False, 0)
+
+        body = hbox(0)
+        body.set_vexpand(True)
+        root.pack_start(body, True, True, 0)
+
+        body.pack_start(self.make_sidebar(), False, False, 0)
+
+        self.stack = Gtk.Stack()
+        self.stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
+        self.stack.set_transition_duration(160)
+        self.stack.set_hexpand(True)
+        self.stack.set_vexpand(True)
+        for name, _, _ in PAGES:
+            self.stack.add_named(getattr(self, f"make_{name}_page")(), name)
+        body.pack_start(self.stack, True, True, 0)
+
+        root.pack_start(self.make_footer(), False, False, 0)
+
+        self.stack.set_visible_child_name(self.tab)
+        self.update_nav(self.tab)
+        self.refresh_theme_state()
+        self.refresh_wallpapers()
+        self.refresh_bar_state()
+        self.refresh_options()
+        self.refresh_status()
+        self.set_status("Ready")
+
+        self.window.show_all()
+        # A Gtk.Stack can ignore visible-child before it is mapped; set it again.
+        self.stack.set_visible_child_name(self.tab)
+        self.update_nav(self.tab)
+        self.refresh_theme_state()
+        GLib.timeout_add(180, self.center_self)
+        self._last_state = engine.load_state()
+        GLib.timeout_add(2500, self.poll_state)
+
+    def poll_state(self) -> bool:
+        """Pick up theme / wallpaper changes made from Waybar or the CLI."""
+        if not self._built:
+            return True
+        try:
+            state = engine.load_state()
+        except Exception:
+            return True
+        changed_theme = state.get("theme") != self._last_state.get("theme")
+        changed_wallpaper = state.get("wallpaper") != self._last_state.get("wallpaper")
+        if changed_theme:
+            self.refresh_theme_state()
+        if changed_theme or changed_wallpaper:
+            self.refresh_wallpapers()
+            self.refresh_status()
+        self._last_state = state
+        return True
+
+    def center_self(self) -> bool:
+        """Wayland ignores Gtk.Window.set_position; ask Hyprland to centre us."""
+        try:
+            result = subprocess.run(
+                ["hyprctl", "clients", "-j"], capture_output=True, text=True, timeout=3
+            )
+            clients = json.loads(result.stdout) if result.returncode == 0 else []
+            address = next((c["address"] for c in clients if c.get("pid") == os.getpid()), None)
+            if address:
+                subprocess.run(
+                    ["hyprctl", "dispatch",
+                     f'hl.dsp.focus({{ window = "address:{address}" }})'],
+                    capture_output=True, text=True, timeout=3,
+                )
+                subprocess.run(
+                    ["hyprctl", "dispatch", "hl.dsp.window.center()"],
+                    capture_output=True, text=True, timeout=3,
+                )
+        except Exception:
+            pass
+        return False
+
+    def make_topbar(self) -> Gtk.Widget:
+        bar = Gtk.EventBox()
+        bar.get_style_context().add_class("topbar")
+        bar.connect("button-press-event", self.on_topbar_press)
+
+        row = hbox(10)
+        row.set_margin_start(16)
+        row.set_margin_end(12)
+        row.set_margin_top(10)
+        row.set_margin_bottom(10)
+        bar.add(row)
+
+        mark = lbl("󰀻", "logo")
+        row.pack_start(mark, False, False, 0)
+
+        titles = vbox(0)
+        titles.pack_start(lbl("Hypr Control Center", "title"), False, False, 0)
+        titles.pack_start(lbl("themed desktop cockpit", "subtitle"), False, False, 0)
+        row.pack_start(titles, False, False, 0)
+
+        spacer = Gtk.Box()
+        row.pack_start(spacer, True, True, 0)
+
+        self.header_theme = lbl("", "pill accent")
+        row.pack_start(self.header_theme, False, False, 0)
+
+        minimize = Gtk.Button(label="–")
+        minimize.set_relief(Gtk.ReliefStyle.NONE)
+        minimize.get_style_context().add_class("winbtn")
+        minimize.connect("clicked", lambda *_: self.window.iconify())
+        row.pack_start(minimize, False, False, 0)
+
+        close = Gtk.Button(label="✕")
+        close.set_relief(Gtk.ReliefStyle.NONE)
+        close.get_style_context().add_class("winbtn")
+        close.get_style_context().add_class("close")
+        close.connect("clicked", lambda *_: self.window.close())
+        row.pack_start(close, False, False, 0)
+        return bar
+
+    def make_sidebar(self) -> Gtk.Widget:
+        sidebar = vbox(4)
+        sidebar.get_style_context().add_class("sidebar")
+        sidebar.set_size_request(190, -1)
+        sidebar.set_margin_start(8)
+        sidebar.set_margin_end(8)
+        sidebar.set_margin_top(12)
+        sidebar.set_margin_bottom(12)
+
+        for name, icon, title in PAGES:
+            btn = Gtk.Button()
+            btn.set_relief(Gtk.ReliefStyle.NONE)
+            btn.get_style_context().add_class("nav")
+            row = hbox(10)
+            row.pack_start(lbl(icon, "nav-icon"), False, False, 0)
+            row.pack_start(lbl(title, "nav-label"), False, False, 0)
+            btn.add(row)
+            btn.connect("clicked", lambda _b, n=name: self.show_page(n))
+            sidebar.pack_start(btn, False, False, 0)
+            self.nav_buttons[name] = btn
+
+        sidebar.pack_start(Gtk.Separator(), False, False, 8)
+
+        hint = lbl("SUPER + SHIFT + T", "key")
+        hint.set_halign(Gtk.Align.CENTER)
+        sidebar.pack_end(hint, False, False, 4)
+        tagline = lbl("opens this window", "muted")
+        tagline.set_halign(Gtk.Align.CENTER)
+        sidebar.pack_end(tagline, False, False, 4)
+        return sidebar
+
+    def make_footer(self) -> Gtk.Widget:
+        footer = Gtk.EventBox()
+        footer.get_style_context().add_class("footer")
+        row = hbox(8)
+        row.set_margin_start(16)
+        row.set_margin_end(16)
+        row.set_margin_top(7)
+        row.set_margin_bottom(7)
+        footer.add(row)
+
+        self.status_label = lbl("Ready", "status")
+        row.pack_start(self.status_label, False, False, 0)
+        spacer = Gtk.Box()
+        row.pack_start(spacer, True, True, 0)
+        self.footer_theme = lbl("", "muted")
+        row.pack_start(self.footer_theme, False, False, 0)
+        return footer
+
+    def page(self) -> tuple[Gtk.ScrolledWindow, Gtk.Box]:
+        scroll = Gtk.ScrolledWindow()
+        scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        scroll.set_hexpand(True)
+        scroll.set_vexpand(True)
+        content = vbox(16)
+        content.set_margin_start(22)
+        content.set_margin_end(22)
+        content.set_margin_top(20)
+        content.set_margin_bottom(24)
+        scroll.add(content)
+        return scroll, content
+
+    def on_key_press(self, _widget, event) -> bool:
+        if event.keyval == Gdk.KEY_Escape:
+            self.window.close()
+            return True
+        return False
+
+    def on_topbar_press(self, _widget, event) -> bool:
+        if event.button == 1 and self.window is not None:
+            self.window.begin_move_drag(event.button, int(event.x_root), int(event.y_root), event.time)
+            return True
+        return False
+
+    def show_page(self, name: str) -> None:
+        self.stack.set_visible_child_name(name)
+        self.update_nav(name)
+
+    def update_nav(self, active: str) -> None:
+        for name, btn in self.nav_buttons.items():
+            ctx = btn.get_style_context()
+            if name == active:
+                ctx.add_class("active")
+            else:
+                ctx.remove_class("active")
+
+    # ------------------------------------------------------------------ #
+    # theme page
+    # ------------------------------------------------------------------ #
+    def make_theme_page(self) -> Gtk.Widget:
+        scroll, content = self.page()
+        header = hbox(12)
+        header.pack_start(section_title(
+            "Colour themes",
+            "One palette drives Hyprland borders, Waybar, kitty, hyprlock and dunst.",
+        ), True, True, 0)
+        header.pack_start(button("Next theme", "ghost", self.cycle_theme, icon="󰁔"), False, False, 0)
+        content.pack_start(header, False, False, 0)
+
+        flow = Gtk.FlowBox()
+        flow.set_selection_mode(Gtk.SelectionMode.NONE)
+        flow.set_homogeneous(True)
+        flow.set_max_children_per_line(3)
+        flow.set_min_children_per_line(2)
+        flow.set_row_spacing(12)
+        flow.set_column_spacing(12)
+        flow.set_valign(Gtk.Align.START)
+        content.pack_start(flow, False, False, 0)
+
+        for theme in engine.all_themes():
+            card = self.theme_card(theme)
+            self.theme_cards[theme["slug"]] = card
+            flow.add(card)
+
+        content.pack_start(lbl(
+            "Theme files are rendered into hypr/theme.lua, waybar/colors.css, "
+            "kitty/theme.conf, hyprlock.conf, hyprpaper.conf and dunst/dunstrc.",
+            "muted", wrap=True,
+        ), False, False, 5)
+        return scroll
+
+    def theme_card(self, theme: dict) -> Gtk.Button:
+        colors = theme["colors"]
+        btn = Gtk.Button()
+        btn.set_relief(Gtk.ReliefStyle.NONE)
+        btn.get_style_context().add_class("card")
+        btn.set_size_request(270, 150)
+
+        box = vbox(8)
+        box.set_margin_start(14)
+        box.set_margin_end(14)
+        box.set_margin_top(12)
+        box.set_margin_bottom(12)
+        btn.add(box)
+
+        top = hbox(6)
+        top.pack_start(lbl(theme["name"], "theme-name"), True, True, 0)
+        active = lbl("", "pill accent")
+        self.theme_active_labels[theme["slug"]] = active
+        top.pack_end(active, False, False, 0)
+        box.pack_start(top, False, False, 0)
+
+        meta = hbox(6)
+        meta.pack_start(lbl(theme["variant"], "pill"), False, False, 0)
+        if theme["accent_name"]:
+            meta.pack_start(lbl(theme["accent_name"], "pill"), False, False, 0)
+        box.pack_start(meta, False, False, 0)
+
+        description = lbl(theme["description"], "muted", wrap=True)
+        description.set_max_width_chars(34)
+        description.set_lines(2)
+        description.set_ellipsize(Pango.EllipsizeMode.END)
+        box.pack_start(description, True, True, 0)
+
+        strip = hbox(0)
+        for key in ("bg", "surface", "accent", "accent_alt", "gold", "fg"):
+            strip.pack_start(swatch(colors[key]), False, False, 0)
+        box.pack_end(strip, False, False, 0)
+
+        btn.connect("clicked", lambda *_: self.apply_theme(theme["slug"]))
+        btn.set_tooltip_text(f"Apply {theme['name']}")
+        return btn
+
+    def cycle_theme(self) -> None:
+        self.set_status("Applying next theme…", timeout=0)
+        self.pump()
+        try:
+            engine.next_theme(1)
+            self.refresh_theme_state()
+            self.refresh_status()
+            self.set_status(f"Theme: {engine.load_theme()['name']}")
+        except Exception as exc:  # pragma: no cover - GUI safety net
+            self.show_error(str(exc))
+
+    def apply_theme(self, slug: str) -> None:
+        self.set_status(f"Applying {slug}…", timeout=0)
+        self.pump()
+        try:
+            engine.apply_theme(slug)
+            self.refresh_theme_state()
+            self.refresh_status()
+            self.set_status(f"Theme: {engine.load_theme()['name']}")
+        except Exception as exc:  # pragma: no cover
+            self.show_error(str(exc))
+
+    def refresh_theme_state(self) -> None:
+        state = engine.load_state()
+        theme = engine.load_theme(state["theme"])
+        self.apply_app_css(theme)
+        if self.header_theme:
+            self.header_theme.set_markup(
+                f"<b>{GLib.markup_escape_text(theme['name'])}</b>"
+                f"  ·  {GLib.markup_escape_text(theme['accent_name'])}"
+            )
+        if self.footer_theme:
+            self.footer_theme.set_text(
+                f"{theme['name']}  ·  {theme['variant']}  ·  {state['theme']}"
+            )
+        for slug, card in self.theme_cards.items():
+            ctx = card.get_style_context()
+            if slug == state["theme"]:
+                ctx.add_class("current")
+                self.theme_active_labels[slug].set_text("ACTIVE")
+                self.theme_active_labels[slug].set_visible(True)
+            else:
+                ctx.remove_class("current")
+                self.theme_active_labels[slug].set_text("")
+                self.theme_active_labels[slug].set_visible(False)
+
+    # ------------------------------------------------------------------ #
+    # wallpaper page
+    # ------------------------------------------------------------------ #
+    def make_wallpaper_page(self) -> Gtk.Widget:
+        scroll, content = self.page()
+        header = hbox(12)
+        header.pack_start(section_title(
+            "Wallpaper",
+            f"Images from {engine.WALLPAPER_DIR} — click a thumbnail to apply it everywhere.",
+        ), True, True, 0)
+        content.pack_start(header, False, False, 0)
+
+        actions = hbox(8)
+        actions.pack_start(button("Add images…", "accent", self.add_wallpapers, icon="󰐕"), False, False, 0)
+        actions.pack_start(button("Open folder", "ghost", self.open_wallpaper_folder, icon="󰉋"), False, False, 0)
+        actions.pack_start(button("Random", "ghost", self.random_wallpaper, icon="󰒲"), False, False, 0)
+        actions.pack_start(button("Slideshow folder", "ghost", self.slideshow_folder, icon="󰎁"), False, False, 0)
+        actions.pack_start(Gtk.Box(), True, True, 0)
+
+        actions.pack_start(lbl("Fit", "muted"), False, False, 0)
+        self.fit_combo = Gtk.ComboBoxText()
+        for fit in ("cover", "contain", "fill", "tile"):
+            self.fit_combo.append_text(fit)
+        self.fit_combo.connect("changed", self.on_fit_changed)
+        actions.pack_start(self.fit_combo, False, False, 0)
+        content.pack_start(actions, False, False, 0)
+
+        self.wallpaper_flow = Gtk.FlowBox()
+        self.wallpaper_flow.set_selection_mode(Gtk.SelectionMode.NONE)
+        self.wallpaper_flow.set_homogeneous(True)
+        self.wallpaper_flow.set_max_children_per_line(3)
+        self.wallpaper_flow.set_min_children_per_line(2)
+        self.wallpaper_flow.set_row_spacing(12)
+        self.wallpaper_flow.set_column_spacing(12)
+        self.wallpaper_flow.set_valign(Gtk.Align.START)
+        content.pack_start(self.wallpaper_flow, False, False, 0)
+
+        self.wallpaper_hint = lbl("", "muted", wrap=True)
+        content.pack_start(self.wallpaper_hint, False, False, 0)
+        return scroll
+
+    def thumb(self, path: Path) -> GdkPixbuf.Pixbuf | None:
+        try:
+            cache_dir = engine.CACHE_DIR / "thumbs"
+            cache_dir.mkdir(parents=True, exist_ok=True)
+            key = hashlib.sha1(str(path).encode()).hexdigest()[:16]
+            stamp = int(path.stat().st_mtime)
+            target = cache_dir / f"{key}-{stamp}.png"
+            if target.exists():
+                return GdkPixbuf.Pixbuf.new_from_file(str(target))
+            pix = GdkPixbuf.Pixbuf.new_from_file_at_scale(str(path), 260, 146, True)
+            oriented = pix.apply_embedded_orientation()
+            if oriented is not None:
+                pix = oriented
+            pix.savev(str(target), "png", [], [])
+            return pix
+        except Exception:
+            return None
+
+    def refresh_wallpapers(self) -> None:
+        if not self.wallpaper_flow:
+            return
+        state = engine.load_state()
+        raw_current = state.get("wallpaper", "")
+        current = engine.expand_path(raw_current) if raw_current else Path("/nonexistent")
+        for child in list(self.wallpaper_flow.get_children()):
+            self.wallpaper_flow.remove(child)
+        self.wallpaper_cards.clear()
+        files = engine.list_wallpapers()
+        if not files:
+            self.wallpaper_flow.add(lbl("No wallpapers yet — add a few images.", "muted"))
+        for path in files:
+            card = self.wallpaper_card(path)
+            key = str(path.resolve())
+            if path.resolve() == current:
+                card.get_style_context().add_class("current")
+            self.wallpaper_cards[key] = card
+            self.wallpaper_flow.add(card)
+        if self.fit_combo:
+            self._syncing = True
+            idx = {"cover": 0, "contain": 1, "fill": 2, "tile": 3}.get(state.get("fit_mode", "cover"), 0)
+            self.fit_combo.set_active(idx)
+            self._syncing = False
+        self.wallpaper_hint.set_text(
+            f"Current: {state.get('wallpaper')}  ·  fit: {state.get('fit_mode')}  ·  "
+            f"{len(files)} image(s)"
+        )
+        self.wallpaper_flow.show_all()
+
+    def wallpaper_card(self, path: Path) -> Gtk.Button:
+        btn = Gtk.Button()
+        btn.set_relief(Gtk.ReliefStyle.NONE)
+        btn.get_style_context().add_class("card")
+        btn.set_size_request(270, 200)
+        btn.set_tooltip_text(str(path))
+
+        box = vbox(7)
+        box.set_margin_start(9)
+        box.set_margin_end(9)
+        box.set_margin_top(9)
+        box.set_margin_bottom(9)
+        btn.add(box)
+
+        pix = self.thumb(path)
+        if pix is not None:
+            image = Gtk.Image.new_from_pixbuf(pix)
+        else:
+            image = Gtk.Image.new_from_icon_name("image-missing", Gtk.IconSize.DIALOG)
+        image.set_halign(Gtk.Align.CENTER)
+        box.pack_start(image, True, True, 0)
+
+        name = lbl(path.stem, "wallpaper-name")
+        name.set_ellipsize(Pango.EllipsizeMode.MIDDLE)
+        name.set_max_width_chars(28)
+        box.pack_start(name, False, False, 0)
+
+        info = lbl(path.suffix.upper().lstrip("."), "muted")
+        box.pack_start(info, False, False, 0)
+
+        btn.connect("clicked", lambda *_: self.apply_wallpaper(path))
+        return btn
+
+    def apply_wallpaper(self, path: Path) -> None:
+        self.set_status(f"Setting wallpaper: {path.name}…", timeout=0)
+        self.pump()
+        try:
+            state = engine.set_wallpaper(path, self.current_fit())
+            self.refresh_wallpapers()
+            self.refresh_status()
+            if state.get("wallpaper_applied", True):
+                self.set_status(f"Wallpaper: {path.name}")
+            else:
+                self.set_status("Wallpaper saved, but hyprpaper did not confirm it", timeout=8)
+        except Exception as exc:
+            self.show_error(str(exc))
+
+    def current_fit(self) -> str:
+        if not self.fit_combo:
+            return "cover"
+        return self.fit_combo.get_active_text() or "cover"
+
+    def on_fit_changed(self, _combo) -> None:
+        if self._syncing:
+            return
+        state = engine.load_state()
+        wallpaper = state.get("wallpaper")
+        if not wallpaper:
+            return
+        try:
+            engine.set_wallpaper(wallpaper, self.current_fit())
+            self.refresh_status()
+            self.set_status(f"Fit: {self.current_fit()}")
+        except Exception as exc:
+            self.show_error(str(exc))
+
+    def add_wallpapers(self) -> None:
+        dialog = Gtk.FileChooserDialog(
+            title="Add wallpapers",
+            parent=self.window,
+            action=Gtk.FileChooserAction.OPEN,
+        )
+        dialog.add_buttons(Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL, "Add", Gtk.ResponseType.OK)
+        dialog.set_select_multiple(True)
+        image_filter = Gtk.FileFilter()
+        image_filter.set_name("Images")
+        for mime in ("image/png", "image/jpeg", "image/webp"):
+            image_filter.add_mime_type(mime)
+        dialog.add_filter(image_filter)
+        response = dialog.run()
+        names = dialog.get_filenames()
+        dialog.destroy()
+        if response != Gtk.ResponseType.OK:
+            return
+        engine.WALLPAPER_DIR.mkdir(parents=True, exist_ok=True)
+        last = None
+        for name in names:
+            src = Path(name)
+            dst = engine.WALLPAPER_DIR / src.name
+            if dst.exists() and dst.resolve() != src.resolve():
+                dst = engine.WALLPAPER_DIR / f"{src.stem}-{int(src.stat().st_mtime)}{src.suffix}"
+            if dst.resolve() != src.resolve():
+                shutil.copy2(src, dst)
+            last = dst
+        self.refresh_wallpapers()
+        if last:
+            self.apply_wallpaper(last)
+        else:
+            self.set_status("No images added")
+
+    def open_wallpaper_folder(self) -> None:
+        engine.WALLPAPER_DIR.mkdir(parents=True, exist_ok=True)
+        subprocess.Popen(["xdg-open", str(engine.WALLPAPER_DIR)],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    def random_wallpaper(self) -> None:
+        try:
+            path = engine.random_wallpaper()
+            self.apply_wallpaper(path)
+        except Exception as exc:
+            self.show_error(str(exc))
+
+    def slideshow_folder(self) -> None:
+        self.set_status("Starting wallpaper slideshow…", timeout=0)
+        self.pump()
+        try:
+            engine.set_wallpaper(engine.WALLPAPER_DIR, self.current_fit())
+            self.refresh_wallpapers()
+            self.refresh_status()
+            self.set_status("Slideshow: every 5 minutes from Pictures/Wallpapers", timeout=8)
+        except Exception as exc:
+            self.show_error(str(exc))
+
+    # ------------------------------------------------------------------ #
+    # waybar page
+    # ------------------------------------------------------------------ #
+    def make_bar_page(self) -> Gtk.Widget:
+        scroll, content = self.page()
+        content.pack_start(section_title(
+            "Waybar layouts",
+            "Switch between hand-made presets; the colour theme stays applied to every layout.",
+        ), False, False, 0)
+
+        flow = Gtk.FlowBox()
+        flow.set_selection_mode(Gtk.SelectionMode.NONE)
+        flow.set_homogeneous(True)
+        flow.set_max_children_per_line(2)
+        flow.set_min_children_per_line(2)
+        flow.set_row_spacing(12)
+        flow.set_column_spacing(12)
+        flow.set_valign(Gtk.Align.START)
+        for name in engine.waybar_presets():
+            title, desc = LAYOUT_INFO.get(name, (name.title(), ""))
+            card = Gtk.Button()
+            card.set_relief(Gtk.ReliefStyle.NONE)
+            card.get_style_context().add_class("card")
+            card.set_size_request(380, 108)
+            box = vbox(6)
+            box.set_margin_start(14)
+            box.set_margin_end(14)
+            box.set_margin_top(12)
+            box.set_margin_bottom(12)
+            card.add(box)
+            top = hbox(8)
+            top.pack_start(lbl(title, "theme-name"), True, True, 0)
+            top.pack_end(lbl(name, "pill"), False, False, 0)
+            box.pack_start(top, False, False, 0)
+            box.pack_start(lbl(desc, "muted", wrap=True), False, False, 0)
+            card.connect("clicked", lambda _b, n=name: self.apply_layout(n))
+            self.layout_cards[name] = card
+            flow.add(card)
+        content.pack_start(flow, False, False, 0)
+
+        pos_card = vbox(8)
+        pos_card.get_style_context().add_class("card")
+        pos_card.set_margin_top(2)
+        pos_card.pack_start(lbl("Bar position", "theme-name"), False, False, 0)
+        pos_card.pack_start(lbl(
+            "Top and bottom bars become horizontal; left and right become slim vertical bars.",
+            "muted", wrap=True,
+        ), False, False, 0)
+        pos_row = hbox(8)
+        for pos in ("top", "bottom", "left", "right"):
+            btn = button(pos.title(), "ghost", lambda p=pos: self.apply_position(p))
+            btn.set_size_request(100, -1)
+            pos_row.pack_start(btn, False, False, 0)
+            self.position_buttons[pos] = btn
+        pos_card.pack_start(pos_row, False, False, 0)
+        content.pack_start(pos_card, False, False, 0)
+
+        actions = hbox(8)
+        actions.pack_start(button("Restart Waybar", "accent", self.restart_waybar, icon="󰑓"), False, False, 0)
+        actions.pack_start(button("Theme page", "ghost", lambda: self.show_page("theme"), icon="󰏘"), False, False, 0)
+        content.pack_start(actions, False, False, 0)
+
+        self.bar_current = lbl("", "muted")
+        content.pack_start(self.bar_current, False, False, 0)
+        return scroll
+
+    def apply_layout(self, name: str) -> None:
+        self.set_status(f"Applying Waybar layout: {name}…", timeout=0)
+        self.pump()
+        try:
+            engine.apply_waybar(name)
+            self.refresh_bar_state()
+            self.refresh_status()
+            self.set_status(f"Waybar layout: {name}")
+        except Exception as exc:
+            self.show_error(str(exc))
+
+    def apply_position(self, position: str) -> None:
+        self.set_status(f"Moving Waybar: {position}…", timeout=0)
+        self.pump()
+        try:
+            engine.apply_waybar(position=position)
+            self.refresh_bar_state()
+            self.refresh_status()
+            self.set_status(f"Waybar position: {position}")
+        except Exception as exc:
+            self.show_error(str(exc))
+
+    def restart_waybar(self) -> None:
+        self.set_status("Restarting Waybar…", timeout=0)
+        self.pump()
+        if engine.restart_waybar():
+            self.refresh_status()
+            self.set_status("Waybar restarted")
+        else:
+            self.set_status("Waybar failed to start", timeout=8)
+
+    def refresh_bar_state(self) -> None:
+        state = engine.load_state()
+        for name, card in self.layout_cards.items():
+            ctx = card.get_style_context()
+            if name == state.get("waybar_layout"):
+                ctx.add_class("current")
+            else:
+                ctx.remove_class("current")
+        for pos, btn in self.position_buttons.items():
+            ctx = btn.get_style_context()
+            if pos == state.get("bar_position"):
+                ctx.add_class("active")
+            else:
+                ctx.remove_class("active")
+        if hasattr(self, "bar_current"):
+            self.bar_current.set_text(
+                f"Current: {state.get('waybar_layout')} / {state.get('bar_position')}"
+                f"  ·  {len(engine.waybar_presets())} presets available"
+            )
+
+    # ------------------------------------------------------------------ #
+    # desktop page
+    # ------------------------------------------------------------------ #
+    def make_desktop_page(self) -> Gtk.Widget:
+        scroll, content = self.page()
+        content.pack_start(section_title(
+            "Desktop look & feel",
+            "Toggles and geometry are persisted in hypr/theme-state.json and re-rendered into hypr/theme.lua.",
+        ), False, False, 0)
+
+        look = vbox(4)
+        look.get_style_context().add_class("card")
+        look.pack_start(lbl("Compositor", "theme-name"), False, False, 2)
+        for key, title, desc in (
+            ("blur", "Window blur", "Blur the wallpaper and translucent windows."),
+            ("animations", "Animations", "Window, workspace and layer animations."),
+            ("shadow", "Window shadows", "Soft shadow around tiled and floating windows."),
+        ):
+            row = hbox(12)
+            row.set_margin_top(6)
+            text = vbox(1)
+            text.pack_start(lbl(title, "setting-title"), False, False, 0)
+            text.pack_start(lbl(desc, "muted", wrap=True), False, False, 0)
+            row.pack_start(text, True, True, 0)
+            switch = Gtk.Switch()
+            switch.set_valign(Gtk.Align.CENTER)
+            switch.connect("state-set", self.on_switch, key)
+            row.pack_end(switch, False, False, 0)
+            self.switches[key] = switch
+            look.pack_start(row, False, False, 0)
+        content.pack_start(look, False, False, 0)
+
+        geometry = vbox(4)
+        geometry.get_style_context().add_class("card")
+        geometry.pack_start(lbl("Geometry", "theme-name"), False, False, 2)
+        for key, title, desc, maximum in (
+            ("rounding", "Window rounding", "Corner radius for windows.", 24),
+            ("gaps_out", "Outer gaps", "Space between windows and the screen edge.", 24),
+            ("gaps_in", "Inner gaps", "Space between tiled windows.", 16),
+            ("border_size", "Border size", "Active / inactive window border width.", 8),
+        ):
+            row = hbox(12)
+            row.set_margin_top(6)
+            text = vbox(1)
+            text.pack_start(lbl(title, "setting-title"), False, False, 0)
+            text.pack_start(lbl(desc, "muted", wrap=True), False, False, 0)
+            row.pack_start(text, True, True, 0)
+            value = lbl("0", "pill")
+            self.value_labels[key] = value
+            row.pack_end(value, False, False, 0)
+            scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0, maximum, 1)
+            scale.set_draw_value(False)
+            scale.set_size_request(190, -1)
+            scale.set_valign(Gtk.Align.CENTER)
+            scale.connect("value-changed", self.on_scale, key)
+            row.pack_end(scale, False, False, 0)
+            self.scales[key] = scale
+            geometry.pack_start(row, False, False, 0)
+        content.pack_start(geometry, False, False, 0)
+
+        quick = vbox(8)
+        quick.get_style_context().add_class("card")
+        quick.pack_start(lbl("Quick actions", "theme-name"), False, False, 0)
+        row = hbox(8)
+        row.pack_start(button("Lock", "ghost", lambda: self.run_shell("pidof hyprlock || hyprlock"), icon="󰌾"), False, False, 0)
+        row.pack_start(button("Screenshot region", "ghost",
+                              lambda: self.run_shell('grim -g "$(slurp -d)" - | wl-copy'),
+                              icon="󰹑"), False, False, 0)
+        row.pack_start(button("Pick colour", "ghost", lambda: self.run_shell("hyprpicker -a"), icon="󰈊"), False, False, 0)
+        row.pack_start(button("Dimmer", "ghost",
+                              lambda: self.run_shell(f"python3 {SCRIPTS.parent.parent}/waybar/scripts/hyprsunset-slider.py"),
+                              icon="󰌵"), False, False, 0)
+        row.pack_start(button("Notifications", "ghost",
+                              lambda: self.run_shell("dunstctl set-paused toggle"),
+                              icon="󰂚"), False, False, 0)
+        quick.pack_start(row, False, False, 0)
+        content.pack_start(quick, False, False, 0)
+
+        status_card = vbox(6)
+        status_card.get_style_context().add_class("card")
+        status_card.pack_start(lbl("Status", "theme-name"), False, False, 0)
+        grid = Gtk.Grid()
+        grid.set_column_spacing(20)
+        grid.set_row_spacing(5)
+        for index, key in enumerate(("theme", "wallpaper", "hyprpaper", "waybar", "hyprland", "monitors")):
+            grid.attach(lbl(key.title(), "muted"), 0, index, 1, 1)
+            value = lbl("", "status-value", selectable=True)
+            grid.attach(value, 1, index, 1, 1)
+            self.info_labels[key] = value
+        status_card.pack_start(grid, False, False, 0)
+        content.pack_start(status_card, False, False, 0)
+
+        actions = hbox(8)
+        actions.pack_start(button("Re-apply theme files", "accent", self.reapply_theme, icon="󰑓"), False, False, 0)
+        actions.pack_start(button("Open config folder", "ghost",
+                                  lambda: subprocess.Popen(["xdg-open", str(engine.HYPR)],
+                                                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL),
+                                  icon="󰉋"), False, False, 0)
+        content.pack_start(actions, False, False, 0)
+        return scroll
+
+    def on_switch(self, switch: Gtk.Switch, state: bool, key: str) -> bool:
+        if self._syncing:
+            return False
+        try:
+            engine.set_option(key, state)
+            self.refresh_status()
+            self.set_status(f"{key}: {'on' if state else 'off'}")
+        except Exception as exc:
+            self.show_error(str(exc))
+            return True
+        return False
+
+    def on_scale(self, scale: Gtk.Scale, key: str) -> None:
+        value = int(scale.get_value())
+        if key in self.value_labels:
+            self.value_labels[key].set_text(str(value))
+        if self._syncing:
+            return
+        if key in self._pending_options:
+            GLib.source_remove(self._pending_options[key])
+        self._pending_options[key] = GLib.timeout_add(450, self.apply_scale, key, value)
+
+    def apply_scale(self, key: str, value: int) -> bool:
+        self._pending_options.pop(key, None)
+        try:
+            engine.set_option(key, value)
+            self.refresh_status()
+            self.set_status(f"{key} → {value}")
+        except Exception as exc:
+            self.show_error(str(exc))
+        return False
+
+    def refresh_options(self) -> None:
+        state = engine.load_state()
+        self._syncing = True
+        for key, switch in self.switches.items():
+            switch.set_active(bool(state.get(key)))
+        for key, scale in self.scales.items():
+            scale.set_value(int(state.get(key, 0)))
+            if key in self.value_labels:
+                self.value_labels[key].set_text(str(int(state.get(key, 0))))
+        self._syncing = False
+
+    def reapply_theme(self) -> None:
+        self.set_status("Re-rendering theme files…", timeout=0)
+        self.pump()
+        try:
+            engine.apply_theme()
+            self.refresh_theme_state()
+            self.refresh_status()
+            self.set_status("Theme files re-applied")
+        except Exception as exc:
+            self.show_error(str(exc))
+
+    # ------------------------------------------------------------------ #
+    # keybinds page
+    # ------------------------------------------------------------------ #
+    def make_keys_page(self) -> Gtk.Widget:
+        scroll, content = self.page()
+        content.pack_start(section_title(
+            "Keybinds & commands",
+            "Every binding below is active in hypr/hyprland.lua.",
+        ), False, False, 0)
+
+        card = vbox(4)
+        card.get_style_context().add_class("card")
+        grid = Gtk.Grid()
+        grid.set_column_spacing(22)
+        grid.set_row_spacing(7)
+        rows = [
+            ("SUPER + Return", "Open kitty terminal"),
+            ("SUPER + E", "Open Dolphin file manager"),
+            ("SUPER + R", "Open Hyprlauncher"),
+            ("SUPER + L", "Lock screen (hyprlock)"),
+            ("SUPER + SHIFT + T", "Hypr Control Center — themes"),
+            ("SUPER + SHIFT + W", "Hypr Control Center — wallpaper"),
+            ("SUPER + ALT + T", "Cycle to the next colour theme"),
+            ("SUPER + ALT + B", "Hypr Control Center — Waybar layouts"),
+            ("SUPER + SHIFT + P", "Pick a colour with hyprpicker"),
+            ("SUPER + SHIFT + S", "Region screenshot → clipboard"),
+            ("Print", "Region screenshot → swappy"),
+            ("SUPER + Print", "Region screenshot → clipboard"),
+            ("SUPER + SHIFT + V", "Clipboard history (cliphist + hyprlauncher)"),
+            ("SUPER + SHIFT + N", "Pause / resume notifications"),
+            ("SUPER + SHIFT + R", "Reload Hyprland config"),
+            ("SUPER + 1…0", "Switch workspace"),
+            ("SUPER + SHIFT + 1…0", "Move window to workspace"),
+            ("SUPER + S", "Toggle scratchpad workspace"),
+            ("SUPER + F", "Toggle fullscreen"),
+            ("SUPER + V", "Toggle floating"),
+            ("SUPER + drag", "Move window with the mouse"),
+            ("SUPER + right-drag", "Resize window with the mouse"),
+        ]
+        for index, (keys, action) in enumerate(rows):
+            key = lbl(keys, "key")
+            key.set_halign(Gtk.Align.START)
+            grid.attach(key, 0, index, 1, 1)
+            grid.attach(lbl(action, "status-value"), 1, index, 1, 1)
+        card.pack_start(grid, False, False, 0)
+        content.pack_start(card, False, False, 0)
+
+        commands = vbox(7)
+        commands.get_style_context().add_class("card")
+        commands.pack_start(lbl("Terminal commands", "theme-name"), False, False, 0)
+        for command, description in (
+            ("theme-switch list", "list every palette"),
+            ("theme-switch set nord", "apply a palette by name"),
+            ("theme-switch next", "cycle palettes"),
+            ("theme-switch option blur on", "persist a look-and-feel toggle"),
+            ("wallpaper-set ~/Pictures/Wallpapers/foo.png", "set a wallpaper"),
+            ("wallpaper-set --random", "random wallpaper"),
+            ("wallpaper-set --directory ~/Pictures/Wallpapers", "random slideshow"),
+            ("waybar-mode --layout compact --position top", "switch bar preset / position"),
+        ):
+            row = hbox(12)
+            row.pack_start(lbl(command, "code", selectable=True), False, False, 0)
+            row.pack_start(lbl(description, "muted"), False, False, 0)
+            commands.pack_start(row, False, False, 0)
+        commands.pack_start(lbl(
+            "Scripts live in ~/.config/hypr/scripts and ~/.config/waybar/scripts. "
+            "The repo is intentionally allow-listed to the Hypr ecosystem.",
+            "muted", wrap=True,
+        ), False, False, 4)
+        content.pack_start(commands, False, False, 0)
+        return scroll
+
+    # ------------------------------------------------------------------ #
+    # status / css
+    # ------------------------------------------------------------------ #
+    def refresh_status(self) -> None:
+        try:
+            status = engine.status()
+        except Exception:
+            return
+        self.info_labels["theme"].set_text(f"{status['theme_name']} ({status['theme']})")
+        self.info_labels["wallpaper"].set_text(str(status.get("wallpaper") or "—"))
+        self.info_labels["hyprpaper"].set_text(
+            "running" if status["hyprpaper_running"] else "not running"
+        )
+        self.info_labels["waybar"].set_text(
+            "running" if status["waybar_running"] else "not running"
+        )
+        self.info_labels["hyprland"].set_text("running" if status["hyprland_running"] else "not running")
+        self.info_labels["monitors"].set_text(", ".join(status["monitors"]) or "—")
+
+    def set_status(self, message: str, timeout: int = 5) -> None:
+        if not self.status_label:
+            return
+        self.status_label.set_text(message)
+        if self._status_source:
+            GLib.source_remove(self._status_source)
+            self._status_source = None
+        if timeout:
+            self._status_source = GLib.timeout_add_seconds(timeout, self.clear_status)
+
+    def clear_status(self) -> bool:
+        self._status_source = None
+        if self.status_label:
+            self.status_label.set_text("Ready")
+        return False
+
+    def pump(self) -> None:
+        while Gtk.events_pending():
+            Gtk.main_iteration_do(False)
+
+    def show_error(self, message: str) -> None:
+        dialog = Gtk.MessageDialog(
+            parent=self.window,
+            flags=0,
+            message_type=Gtk.MessageType.ERROR,
+            buttons=Gtk.ButtonsType.CLOSE,
+            text="Something went wrong",
+        )
+        dialog.format_secondary_text(str(message))
+        dialog.run()
+        dialog.destroy()
+        self.set_status("Error — see dialog", timeout=8)
+
+    def run_shell(self, command: str) -> None:
+        subprocess.Popen(["sh", "-c", command], start_new_session=True,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self.set_status("Launched: " + command.split()[0])
+
+    def apply_app_css(self, theme: dict) -> None:
+        c = theme["colors"]
+        css = f"""
+        window {{
+            background-color: {c['bg']};
+            color: {c['fg']};
+        }}
+        .topbar {{
+            background-color: {c['bg_alt']};
+            border-bottom: 1px solid {c['border']};
+        }}
+        .logo {{
+            font-family: "JetBrainsMono Nerd Font";
+            font-size: 22px;
+            color: {c['accent']};
+        }}
+        .title {{
+            font-family: "JetBrainsMono Nerd Font";
+            font-size: 18px;
+            font-weight: 800;
+            color: {c['fg']};
+        }}
+        .subtitle {{
+            font-size: 11px;
+            color: {c['muted']};
+        }}
+        .sidebar {{
+            background-color: {c['bg_alt']};
+            border-right: 1px solid {c['border']};
+        }}
+        .nav {{
+            background-color: transparent;
+            border: none;
+            border-radius: 8px;
+            padding: 9px 10px;
+            color: {c['fg_dim']};
+        }}
+        .nav:hover {{
+            background-color: {c['surface']};
+            color: {c['fg']};
+        }}
+        .nav.active {{
+            background-color: {c['accent']};
+            color: {c['on_accent']};
+        }}
+        .nav.active label,
+        .nav.active .nav-icon {{
+            color: {c['on_accent']};
+            font-weight: 700;
+        }}
+        .nav-icon {{
+            font-family: "JetBrainsMono Nerd Font";
+            font-size: 15px;
+        }}
+        .nav-label {{
+            font-size: 13px;
+        }}
+        .page-title {{
+            font-family: "JetBrainsMono Nerd Font";
+            font-size: 20px;
+            font-weight: 800;
+            color: {c['fg']};
+        }}
+        .page-sub {{
+            font-size: 12px;
+            color: {c['muted']};
+        }}
+        .card {{
+            background-color: {c['surface']};
+            background-image: none;
+            border: 1px solid {c['border']};
+            border-radius: 12px;
+            padding: 12px;
+            color: {c['fg']};
+        }}
+        button.card {{
+            background-color: {c['surface']};
+            background-image: none;
+        }}
+        button.card:hover {{
+            background-color: {c['surface_alt']};
+        }}
+        button.card.current {{
+            border: 2px solid {c['accent']};
+        }}
+        .theme-name {{
+            font-family: "JetBrainsMono Nerd Font";
+            font-size: 14px;
+            font-weight: 800;
+            color: {c['fg']};
+        }}
+        .setting-title {{
+            font-size: 13px;
+            font-weight: 700;
+            color: {c['fg']};
+        }}
+        .wallpaper-name {{
+            font-size: 12px;
+            font-weight: 700;
+            color: {c['fg']};
+        }}
+        .muted {{
+            color: {c['muted']};
+            font-size: 11px;
+        }}
+        .status {{
+            color: {c['fg_dim']};
+            font-size: 11px;
+        }}
+        .status-value {{
+            color: {c['fg']};
+            font-size: 12px;
+        }}
+        .pill {{
+            background-color: {c['surface_alt']};
+            color: {c['fg_dim']};
+            border-radius: 20px;
+            padding: 2px 9px;
+            font-size: 10px;
+            font-weight: 700;
+        }}
+        .pill.accent {{
+            background-color: {c['accent']};
+            color: {c['on_accent']};
+        }}
+        .action {{
+            background-color: {c['surface_alt']};
+            background-image: none;
+            border: 1px solid {c['border']};
+            border-radius: 8px;
+            padding: 7px 12px;
+            color: {c['fg']};
+            font-size: 12px;
+            font-weight: 600;
+        }}
+        .action:hover {{
+            background-color: {c['border']};
+        }}
+        .action.accent {{
+            background-color: {c['accent']};
+            border-color: {c['accent']};
+            color: {c['on_accent']};
+        }}
+        .action.accent:hover {{
+            background-color: {c['accent_alt']};
+            border-color: {c['accent_alt']};
+        }}
+        .action.ghost {{
+            background-color: transparent;
+        }}
+        .action.ghost:hover {{
+            background-color: {c['surface_alt']};
+        }}
+        .action.active {{
+            background-color: {c['accent']};
+            border-color: {c['accent']};
+            color: {c['on_accent']};
+        }}
+        .action-icon {{
+            font-family: "JetBrainsMono Nerd Font";
+            font-size: 13px;
+        }}
+        .winbtn {{
+            background-color: transparent;
+            background-image: none;
+            border: none;
+            border-radius: 7px;
+            padding: 3px 9px;
+            color: {c['fg_dim']};
+            font-size: 13px;
+        }}
+        .winbtn:hover {{
+            background-color: {c['surface']};
+            color: {c['fg']};
+        }}
+        .winbtn.close:hover {{
+            background-color: {c['red']};
+            color: {c['on_accent']};
+        }}
+        .footer {{
+            background-color: {c['bg_alt']};
+            border-top: 1px solid {c['border']};
+        }}
+        .key {{
+            font-family: "JetBrainsMono Nerd Font";
+            font-size: 11px;
+            font-weight: 700;
+            background-color: {c['surface_alt']};
+            color: {c['accent_alt']};
+            border-radius: 5px;
+            padding: 2px 7px;
+        }}
+        .code {{
+            font-family: "JetBrainsMono Nerd Font";
+            font-size: 11px;
+            color: {c['accent_alt']};
+        }}
+        switch {{
+            background-color: {c['surface_alt']};
+            border: 1px solid {c['border']};
+            border-radius: 16px;
+            min-width: 42px;
+            min-height: 22px;
+        }}
+        switch:checked {{
+            background-color: {c['accent']};
+            border-color: {c['accent']};
+        }}
+        switch slider {{
+            background-color: {c['fg']};
+            border-radius: 50%;
+            min-width: 16px;
+            min-height: 16px;
+        }}
+        scale trough {{
+            background-color: {c['surface_alt']};
+            border-radius: 4px;
+            min-height: 5px;
+        }}
+        scale highlight {{
+            background-color: {c['accent']};
+            border-radius: 4px;
+        }}
+        scale slider {{
+            background-color: {c['accent']};
+            border: 2px solid {c['bg']};
+            border-radius: 50%;
+            min-width: 14px;
+            min-height: 14px;
+        }}
+        combobox button {{
+            background-color: {c['surface_alt']};
+            background-image: none;
+            border: 1px solid {c['border']};
+            border-radius: 7px;
+            color: {c['fg']};
+            padding: 4px 10px;
+        }}
+        scrollbar slider {{
+            background-color: {c['border']};
+            border-radius: 8px;
+            min-width: 6px;
+            min-height: 6px;
+        }}
+        separator {{
+            background-color: {c['border']};
+            min-height: 1px;
+        }}
+        tooltip {{
+            background-color: {c['bg']};
+            border: 1px solid {c['border']};
+            border-radius: 7px;
+        }}
+        tooltip label {{
+            color: {c['fg']};
+        }}
+        """
+        provider = Gtk.CssProvider()
+        provider.load_from_data(css.encode("utf-8"))
+        screen = Gdk.Screen.get_default()
+        if self._css_provider is not None:
+            Gtk.StyleContext.remove_provider_for_screen(screen, self._css_provider)
+        Gtk.StyleContext.add_provider_for_screen(
+            screen, provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+        )
+        self._css_provider = provider
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Hypr Control Center")
+    parser.add_argument("--tab", choices=[p[0] for p in PAGES], default="theme")
+    args, _unknown = parser.parse_known_args()
+
+    GLib.set_prgname(APP_ID)
+    GLib.set_application_name("Hypr Control Center")
+    try:
+        Gdk.set_program_class("hypr-control-center")
+    except Exception:
+        pass
+
+    app = ControlCenter(args.tab)
+    return app.run([sys.argv[0], "--tab", args.tab])
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

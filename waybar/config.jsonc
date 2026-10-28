@@ -1,0 +1,275 @@
+{
+  "custom/launcher": {
+    "format": "\uf306",
+    "tooltip-format": "Applications\nLeft: launcher \u00b7 Right: terminal",
+    "on-click": "hyprlauncher",
+    "on-click-right": "kitty"
+  },
+  "hyprland/workspaces": {
+    "format": "{icon}",
+    "format-icons": {
+      "1": "\u4e00",
+      "2": "\u4e8c",
+      "3": "\u4e09",
+      "4": "\u56db",
+      "5": "\u4e94",
+      "6": "\u516d",
+      "7": "\u4e03",
+      "8": "\u516b",
+      "9": "\u4e5d",
+      "10": "\u5341",
+      "default": "\u25c9"
+    },
+    "persistent-workspaces": {
+      "*": 6
+    },
+    "all-outputs": true,
+    "move-to-monitor": true,
+    "disable-scroll": true,
+    "sort-by": "number",
+    "on-click": "activate",
+    "on-click-right": "close",
+    "tooltip": false
+  },
+  "custom/theme": {
+    "exec": "$HOME/.config/hypr/scripts/theme-switch current",
+    "interval": 2,
+    "format": "\udb80\udfd8",
+    "tooltip-format": "Theme: {}\nScroll to cycle \u00b7 Click for Control Center",
+    "on-click": "$HOME/.config/hypr/scripts/hypr-control-center --tab theme",
+    "on-scroll-up": "$HOME/.config/hypr/scripts/theme-switch next",
+    "on-scroll-down": "$HOME/.config/hypr/scripts/theme-switch prev"
+  },
+  "custom/wallpaper": {
+    "format": "\udb83\ude09",
+    "tooltip-format": "Wallpaper\nLeft: picker \u00b7 Right: random",
+    "on-click": "$HOME/.config/hypr/scripts/hypr-control-center --tab wallpaper",
+    "on-click-right": "$HOME/.config/hypr/scripts/wallpaper-set --random",
+    "on-scroll-up": "$HOME/.config/hypr/scripts/wallpaper-set --random"
+  },
+  "custom/hyprsunset": {
+    "format": "\udb80\udf35",
+    "tooltip-format": "Hyprsunset Dimmer\nLeft: open sliders \u00b7 Scroll: quick adjust",
+    "on-click": "python3 $HOME/.config/waybar/scripts/hyprsunset-slider.py",
+    "on-scroll-up": "hyprctl hyprsunset gamma +5",
+    "on-scroll-down": "hyprctl hyprsunset gamma -5"
+  },
+  "custom/updates": {
+    "exec": "$HOME/.config/waybar/scripts/updates.sh",
+    "return-type": "json",
+    "interval": 3600,
+    "format": "\udb80\udfd6 {}",
+    "tooltip": true
+  },
+  "custom/power": {
+    "format": "\u23fb",
+    "tooltip-format": "Power menu",
+    "on-click": "hyprshutdown"
+  },
+  "custom/weather": {
+    "format": "{}\u00b0",
+    "tooltip": true,
+    "interval": 900,
+    "exec": "$HOME/.config/waybar/wttrbar --nerd --location Salatiga",
+    "return-type": "json"
+  },
+  "power-profiles-daemon": {
+    "format": "{icon}",
+    "tooltip-format": "Power profile: {profile}\nDriver: {driver}",
+    "tooltip": true,
+    "format-icons": {
+      "performance": "\uef76",
+      "balanced": "\uf24e",
+      "power-saver": "\udb80\udc73"
+    }
+  },
+  "cpu": {
+    "interval": 5,
+    "format": "\uf2db {usage:02}%",
+    "tooltip-format": "CPU {usage}% \u00b7 {avg_frequency} GHz",
+    "on-click": "kitty -e btop",
+    "states": {
+      "warning": 55,
+      "critical": 85
+    }
+  },
+  "memory": {
+    "interval": 5,
+    "format": "\ue266 {used:0.1f} GiB",
+    "tooltip-format": "RAM {percentage}%\n{used:0.1f} GB / {total:0.1f} GB",
+    "on-click": "kitty -e btop",
+    "states": {
+      "warning": 60,
+      "critical": 85
+    }
+  },
+  "backlight": {
+    "format": "{icon}",
+    "tooltip": true,
+    "tooltip-format": "Brightness: {percent}%",
+    "format-alt": "{percent}%",
+    "format-alt-click": "click-right",
+    "format-icons": [
+      "\udb80\udcdc",
+      "\udb80\udcdd",
+      "\udb80\udcde",
+      "\udb80\udcdf",
+      "\udb80\udce0"
+    ],
+    "on-scroll-down": "brightnessctl s 5%-",
+    "on-scroll-up": "brightnessctl s +5%"
+  },
+  "pulseaudio": {
+    "format": "{icon}",
+    "tooltip-format": "Volume: {volume}%\nLeft: mixer \u00b7 Right: mute",
+    "on-click": "sh -c 'command -v pavucontrol >/dev/null && pavucontrol || kitty -e alsamixer'",
+    "on-click-right": "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle",
+    "scroll-step": 5,
+    "format-muted": "\ueee8",
+    "format-icons": {
+      "headphone": "\uf025",
+      "headset": "\uf025",
+      "default": [
+        "\uf026",
+        "\uf027",
+        "\uf028"
+      ]
+    }
+  },
+  "network": {
+    "format": "{icon} {essid}",
+    "format-wifi": "{icon} {essid}",
+    "format-ethernet": "\udb80\ude00 wired",
+    "format-disconnected": "\udb82\udd2e offline",
+    "format-icons": [
+      "\udb82\udd2f",
+      "\udb82\udd1f",
+      "\udb82\udd22",
+      "\udb82\udd25",
+      "\udb82\udd28"
+    ],
+    "tooltip-format-wifi": "{essid} ({signalStrength}%)\n\u21e3 {bandwidthDownBytes}  \u21e1 {bandwidthUpBytes}",
+    "tooltip-format-ethernet": "Ethernet\n\u21e3 {bandwidthDownBytes}  \u21e1 {bandwidthUpBytes}",
+    "tooltip-format-disconnected": "Disconnected",
+    "interval": 5,
+    "on-click": "kitty -e nmtui"
+  },
+  "bluetooth": {
+    "format": "\udb80\udcb2",
+    "format-disabled": "\udb80\udcb2",
+    "format-connected": "\udb80\udcb1 {num_connections}",
+    "tooltip-format": "{controller_alias}\n{num_connections} connected",
+    "on-click": "blueman-manager"
+  },
+  "battery": {
+    "format": "{capacity}% {icon}",
+    "format-charging": "{capacity}% \udb80\udc84",
+    "format-plugged": " plugged",
+    "format-icons": {
+      "charging": [
+        "\udb82\udc9c",
+        "\udb80\udc86",
+        "\udb80\udc87",
+        "\udb80\udc88",
+        "\udb82\udc9d",
+        "\udb80\udc89",
+        "\udb82\udc9e",
+        "\udb80\udc8a",
+        "\udb80\udc8b",
+        "\udb80\udc85"
+      ],
+      "default": [
+        "\udb80\udc7a",
+        "\udb80\udc7b",
+        "\udb80\udc7c",
+        "\udb80\udc7d",
+        "\udb80\udc7e",
+        "\udb80\udc7f",
+        "\udb80\udc80",
+        "\udb80\udc81",
+        "\udb80\udc82",
+        "\udb80\udc79"
+      ]
+    },
+    "tooltip-format-discharging": "{power:>1.0f}W \u2193 \u00b7 {capacity}%",
+    "tooltip-format-charging": "{power:>1.0f}W \u2191 \u00b7 {capacity}%",
+    "interval": 5,
+    "states": {
+      "warning": 20,
+      "critical": 10
+    }
+  },
+  "clock": {
+    "format": "{:%a %d %b  %H:%M}",
+    "tooltip-format": "<tt><small>{calendar}</small></tt>"
+  },
+  "mpris": {
+    "format": "{status_icon} {dynamic}",
+    "format-paused": "{status_icon} {dynamic}",
+    "interval": 5,
+    "dynamic-order": [
+      "artist",
+      "position",
+      "length"
+    ],
+    "dynamic-importance-order": [
+      "position",
+      "length",
+      "artist"
+    ],
+    "tooltip-format": "{player} ({status})\n{artist} - {title}",
+    "max-length": 50,
+    "status-icons": {
+      "paused": "\udb81\udf5b"
+    }
+  },
+  "idle_inhibitor": {
+    "format": "{icon}",
+    "tooltip-format-activated": "Stay awake: ON",
+    "tooltip-format-deactivated": "Stay awake: OFF",
+    "format-icons": {
+      "activated": "\udb84\udfb4",
+      "deactivated": "\udb83\udddb"
+    }
+  },
+  "tray": {
+    "icon-size": 14,
+    "spacing": 3
+  },
+  "layer": "top",
+  "position": "top",
+  "exclusive": true,
+  "gtk-layer-shell": true,
+  "reload_style_on_change": true,
+  "width": 620,
+  "height": 38,
+  "spacing": 4,
+  "margin-top": 0,
+  "margin-bottom": 0,
+  "modules-left": [
+    "custom/launcher",
+    "hyprland/workspaces",
+    "custom/theme",
+    "custom/wallpaper",
+    "idle_inhibitor",
+    "tray",
+    "custom/updates",
+    "power-profiles-daemon",
+    "bluetooth",
+    "network"
+  ],
+  "modules-center": [
+    "mpris"
+  ],
+  "modules-right": [
+    "custom/hyprsunset",
+    "backlight",
+    "pulseaudio",
+    "memory",
+    "cpu",
+    "custom/weather",
+    "clock",
+    "battery",
+    "custom/power"
+  ]
+}

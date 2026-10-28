@@ -1,0 +1,38 @@
+{
+  "layer": "top",
+  "position": "top",
+  "exclusive": true,
+  "gtk-layer-shell": true,
+  "reload_style_on_change": true,
+  "width": 620,
+  "height": 38,
+  "spacing": 4,
+  "margin-top": 0,
+  "margin-bottom": 0,
+  "modules-left": [
+    "custom/launcher",
+    "hyprland/workspaces",
+    "custom/theme",
+    "custom/wallpaper",
+    "idle_inhibitor",
+    "tray",
+    "custom/updates",
+    "power-profiles-daemon",
+    "bluetooth",
+    "network"
+  ],
+  "modules-center": [
+    "mpris"
+  ],
+  "modules-right": [
+    "custom/hyprsunset",
+    "backlight",
+    "pulseaudio",
+    "memory",
+    "cpu",
+    "custom/weather",
+    "clock",
+    "battery",
+    "custom/power"
+  ]
+}

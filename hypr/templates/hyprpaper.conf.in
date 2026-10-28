@@ -1,0 +1,14 @@
+# Generated from ~/.config/hypr/themes/${theme_slug}.toml
+# Edit through Hypr Control Center or `wallpaper-set`, not by hand.
+
+splash = false
+ipc = true
+
+wallpaper {
+    monitor =
+    path = ${wallpaper}
+    fit_mode = ${fit_mode}
+    timeout = ${timeout}
+    order = random
+    recursive = false
+}

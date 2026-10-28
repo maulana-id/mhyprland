@@ -1,0 +1,125 @@
+#!/usr/bin/env bash
+# Bootstrap the Ascent Hyprland desktop from a fresh clone.
+# Safe to re-run: existing fonts, binaries, wallpapers and theme state are kept.
+
+set -euo pipefail
+
+CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}"
+SCRIPTS="$CONFIG/hypr/scripts"
+ASSETS="$CONFIG/hypr/assets"
+FONT_DIR="$HOME/.local/share/fonts"
+LOCAL_BIN="$HOME/.local/bin"
+
+say() { printf '\n\033[1;38;5;208m==>\033[0m %s\n' "$*"; }
+warn() { printf '\033[1;33mwarning:\033[0m %s\n' "$*" >&2; }
+
+install_fonts() {
+    say "Installing JetBrainsMono Nerd Font + Symbols Nerd Font"
+    mkdir -p "$FONT_DIR/JetBrainsMonoNerd" "$FONT_DIR/NerdSymbols"
+    local base="https://raw.githubusercontent.com/ryanoasis/nerd-fonts/master/patched-fonts/JetBrainsMono/Ligatures"
+    for variant in Regular Bold Italic BoldItalic Medium; do
+        local target="$FONT_DIR/JetBrainsMonoNerd/JetBrainsMonoNerdFont-$variant.ttf"
+        if [ ! -f "$target" ]; then
+            curl -fsSL --retry 2 -o "$target" "$base/JetBrainsMonoNerdFont-$variant.ttf"
+        fi
+    done
+    if [ ! -f "$FONT_DIR/NerdSymbols/SymbolsNerdFont-Regular.ttf" ]; then
+        local tmp
+        tmp="$(mktemp -d)"
+        curl -fsSL --retry 2 -o "$tmp/symbols.zip" \
+            https://github.com/ryanoasis/nerd-fonts/releases/download/v3.5.1/NerdFontsSymbolsOnly.zip
+        unzip -o -q "$tmp/symbols.zip" -d "$FONT_DIR/NerdSymbols"
+        rm -rf "$tmp"
+    fi
+    fc-cache -f >/dev/null 2>&1 || true
+}
+
+install_local_deb() {
+    # Install a Debian package into ~/.local without sudo (used for hyprpaper/picker).
+    local package="$1" binary="$2"
+    if command -v "$binary" >/dev/null 2>&1 || [ -x "$LOCAL_BIN/$binary" ]; then
+        return 0
+    fi
+    if ! command -v apt-get >/dev/null 2>&1 || ! command -v dpkg-deb >/dev/null 2>&1; then
+        warn "$binary is missing; install it with your package manager"
+        return 0
+    fi
+    say "Installing $binary to $LOCAL_BIN (no sudo)"
+    local tmp
+    tmp="$(mktemp -d)"
+    if (cd "$tmp" && apt-get download "$package" >/dev/null 2>&1 &&
+        dpkg-deb -x ./*.deb root && install -Dm755 "root/usr/bin/$binary" "$LOCAL_BIN/$binary"); then
+        echo "installed $binary"
+    else
+        warn "could not download $package; install it with your package manager"
+    fi
+    rm -rf "$tmp"
+}
+
+check_deps() {
+    say "Checking desktop dependencies"
+    local missing=()
+    for command in Hyprland hyprctl waybar kitty hyprlock hypridle dunst hyprlauncher \
+                   hyprshutdown hyprsunset grim slurp wl-copy cliphist brightnessctl \
+                   playerctl magick python3; do
+        command -v "$command" >/dev/null 2>&1 || missing+=("$command")
+    done
+    if ! python3 -c 'import gi; gi.require_version("Gtk", "3.0")' >/dev/null 2>&1; then
+        missing+=("python3-gi (GTK 3)")
+    fi
+    if [ "${#missing[@]}" -gt 0 ]; then
+        warn "missing: ${missing[*]}"
+        warn "on Debian: sudo apt install hyprland waybar kitty hyprlock hypridle dunst hyprlauncher hyprshutdown hyprsunset grim slurp wl-clipboard cliphist brightnessctl playerctl imagemagick python3-gi"
+    else
+        echo "all core dependencies found"
+    fi
+}
+
+install_fonts
+check_deps
+install_local_deb hyprpaper hyprpaper
+install_local_deb hyprpicker hyprpicker
+
+say "Preparing the default wallpaper"
+mkdir -p "$HOME/Pictures/Wallpapers"
+if [ -f "$ASSETS/default-wallpaper.png" ] && [ ! -f "$HOME/Pictures/Wallpapers/hyprland-0.png" ]; then
+    cp "$ASSETS/default-wallpaper.png" "$HOME/Pictures/Wallpapers/hyprland-0.png"
+fi
+
+say "Rendering theme files"
+"$SCRIPTS/theme-switch" apply
+
+# If the state points at a missing image (new machine, moved Pictures), fall back
+# to the bundled default so hyprpaper has something valid to load.
+wallpaper="$(
+    python3 - "$CONFIG/hypr/theme-state.json" <<'PY'
+import json, os, sys
+try:
+    state = json.load(open(sys.argv[1]))
+    print(os.path.expanduser(state.get("wallpaper", "")))
+except Exception:
+    print("")
+PY
+)"
+if [ -n "$wallpaper" ] && [ ! -e "$wallpaper" ]; then
+    wallpaper="$HOME/Pictures/Wallpapers/hyprland-0.png"
+    "$SCRIPTS/wallpaper-set" "$wallpaper" >/dev/null
+fi
+
+say "Starting desktop services"
+if command -v hyprctl >/dev/null 2>&1 && hyprctl version >/dev/null 2>&1; then
+    pgrep -x waybar >/dev/null || setsid waybar >/dev/null 2>&1 < /dev/null &
+    pgrep -x dunst >/dev/null || setsid dunst >/dev/null 2>&1 < /dev/null &
+    if ! pgrep -x hyprpaper >/dev/null; then
+        if command -v hyprpaper >/dev/null 2>&1; then
+            setsid hyprpaper >/dev/null 2>&1 < /dev/null &
+        elif [ -x "$LOCAL_BIN/hyprpaper" ]; then
+            setsid "$LOCAL_BIN/hyprpaper" >/dev/null 2>&1 < /dev/null &
+        fi
+    fi
+    sleep 1
+fi
+
+say "Done"
+echo "Open the control centre with: $SCRIPTS/hypr-control-center"
+echo "Cycle themes with:          $SCRIPTS/theme-switch next"

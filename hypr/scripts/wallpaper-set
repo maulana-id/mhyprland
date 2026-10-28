@@ -1,0 +1,65 @@
+#!/usr/bin/env python3
+"""Set, randomize or inspect the Hyprland wallpaper.
+
+Examples:
+    wallpaper-set ~/Pictures/Wallpapers/foo.png
+    wallpaper-set --directory ~/Pictures/Wallpapers
+    wallpaper-set --random
+    wallpaper-set --list
+    wallpaper-set --fit contain ~/Pictures/Wallpapers/foo.jpg
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import theme_engine as engine  # noqa: E402
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(prog="wallpaper-set", description=__doc__,
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("path", nargs="?", help="image file or wallpaper directory")
+    parser.add_argument("--directory", action="store_true", help="treat path as a slideshow directory")
+    parser.add_argument("--random", action="store_true", help="pick a random wallpaper")
+    parser.add_argument("--list", action="store_true", help="list wallpapers")
+    parser.add_argument("--fit", choices=sorted(engine.FIT_MODES), help="cover, contain, fill or tile")
+    parser.add_argument("--json", action="store_true", help="print state as JSON")
+    args = parser.parse_args()
+
+    if args.list:
+        for path in engine.list_wallpapers():
+            print(path)
+        return 0
+
+    target = args.path
+    if args.random:
+        target = engine.random_wallpaper()
+    if not target:
+        parser.print_help()
+        return 2
+    if args.directory and not Path(target).is_dir():
+        print(f"not a directory: {target}", file=sys.stderr)
+        return 2
+
+    state = engine.set_wallpaper(target, args.fit)
+    if args.json:
+        print(json.dumps(state, indent=2))
+    else:
+        kind = "slideshow" if Path(state["wallpaper"]).is_dir() else "wallpaper"
+        print(f"{kind} → {state['wallpaper']} ({state['fit_mode']})")
+        if not state.get("wallpaper_applied", True):
+            print("warning: hyprpaper did not confirm the change", file=sys.stderr)
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except (FileNotFoundError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        raise SystemExit(1)
