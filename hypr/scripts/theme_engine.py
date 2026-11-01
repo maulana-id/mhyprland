@@ -60,6 +60,14 @@ DEFAULT_STATE = {
     "cava_noise": 77,
     "cava_sensitivity": 100,
     "cava_mirror": True,
+    "cava_direction": "middle-out",
+    "cava_group_mode": "gradient",
+    "cava_group_gap": True,
+    "cava_bass_punch": True,
+    "cava_color_1": "accent",
+    "cava_color_2": "gold",
+    "cava_color_3": "cyan",
+    "cava_color_4": "red",
     "cava_color_mode": "gradient",
     "cava_grad_from": "accent",
     "cava_grad_to": "gold",
@@ -691,35 +699,212 @@ def next_theme(direction: int = 1) -> str:
     return slug
 
 
+_COLOR_CHOICES = {"accent", "accent_alt", "gold", "cyan", "green", "red", "blue", "magenta", "orange", "fg"}
+
 _CAVA_INT_RANGES: dict[str, tuple[int, int]] = {
-    "cava_freq_low": (1, 500),
-    "cava_freq_high": (200, 20000),
-    "cava_bars": (2, 12),
+    "cava_freq_low": (1, 1000),
+    "cava_freq_high": (100, 22000),
+    "cava_bars": (2, 32),
     "cava_noise": (0, 100),
     "cava_sensitivity": (50, 300),
     "cava_framerate": (12, 60),
     "cava_silence": (0, 120),
 }
-_CAVA_BOOL_KEYS = {"cava_mirror"}
+_CAVA_BOOL_KEYS = {"cava_mirror", "cava_group_gap", "cava_bass_punch"}
 _CAVA_STRING_OPTIONS: dict[str, set[str]] = {
+    "cava_direction": {"middle-out", "edges-in", "left-to-right", "right-to-left"},
+    "cava_group_mode": {"1", "2", "3", "4", "gradient"},
+    "cava_color_1": _COLOR_CHOICES,
+    "cava_color_2": _COLOR_CHOICES,
+    "cava_color_3": _COLOR_CHOICES,
+    "cava_color_4": _COLOR_CHOICES,
     "cava_color_mode": {"gradient", "theme", "solid"},
-    "cava_grad_from": {"accent", "gold", "cyan", "red", "green", "blue", "fg"},
-    "cava_grad_to": {"accent", "gold", "cyan", "red", "green", "blue", "fg"},
+    "cava_grad_from": _COLOR_CHOICES,
+    "cava_grad_to": _COLOR_CHOICES,
 }
+
+
+CAVA_BLOCKS = "▁▂▃▄▅▆▇█"
+
+
+def hex_to_rgb(hex_color: str) -> tuple[int, int, int]:
+    h = hex_color.strip().lstrip("#")
+    if len(h) == 3:
+        h = h[0] * 2 + h[1] * 2 + h[2] * 2
+    return int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+
+
+def lerp_color(color_a: str, color_b: str, t: float) -> str:
+    """Linear interpolate between two hex colors; t=0 -> a, t=1 -> b."""
+    ar, ag, ab = hex_to_rgb(color_a)
+    br, bg, bb = hex_to_rgb(color_b)
+    r = int(ar + (br - ar) * t)
+    g = int(ag + (bg - ag) * t)
+    b = int(ab + (bb - ab) * t)
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
+def render_cava(values: list[int], colors: dict, cava_state: dict) -> str:
+    """
+    Render bars as Pango markup according to user customization:
+    - direction: "middle-out" (centered mirror), "edges-in" (outside-in mirror),
+                 "left-to-right" (bass left), "right-to-left" (treble left)
+    - group_mode: "1" (solid), "2" (bi-band), "3" (tri-band), "4" (quad-band), "gradient" (smooth lerp)
+    - group_gap: bool (whether to insert separation space between groups)
+    - bass_punch: bool (whether to give low-end an extra kick)
+    - color_1 .. color_4: theme palette keys
+    """
+    n = len(values)
+    if n == 0:
+        return ""
+
+    direction: str = str(cava_state.get("direction", "middle-out"))
+    if not direction:
+        direction = "middle-out" if cava_state.get("mirror", True) else "left-to-right"
+
+    group_mode: str = str(cava_state.get("group_mode", ""))
+    if not group_mode:
+        cm = str(cava_state.get("color_mode", "gradient"))
+        group_mode = "gradient" if cm == "gradient" else ("1" if cm == "solid" else "3")
+
+    group_gap: bool = bool(cava_state.get("group_gap", True))
+    bass_punch: bool = bool(cava_state.get("bass_punch", True))
+
+    c1_name = cava_state.get("color_1", cava_state.get("gradient_from", "accent"))
+    c2_name = cava_state.get("color_2", cava_state.get("gradient_to", "gold"))
+    c3_name = cava_state.get("color_3", "cyan")
+    c4_name = cava_state.get("color_4", "red")
+
+    c1 = colors.get(c1_name, "#7aa2f7")
+    c2 = colors.get(c2_name, "#e0af68")
+    c3 = colors.get(c3_name, "#7dcfff")
+    c4 = colors.get(c4_name, "#f7768e")
+
+    # Low-end boost
+    processed = list(values)
+    if bass_punch:
+        punch_count = max(1, n // 4)
+        for i in range(min(punch_count, n)):
+            if processed[i] > 0:
+                processed[i] = min(7, processed[i] + 1)
+
+    sep = "\u2009"  # thin space within a group
+    gap = " "       # space between groups
+
+    if direction in ("middle-out", "edges-in"):
+        if direction == "middle-out":
+            left_half_vals = list(reversed(processed))  # treble -> bass
+            right_half_vals = list(processed)           # bass -> treble
+        else:
+            left_half_vals = list(processed)           # bass -> treble
+            right_half_vals = list(reversed(processed)) # treble -> bass
+
+        if group_mode == "gradient":
+            def _grad_col(pos: int, total_half: int) -> str:
+                t = pos / max(total_half - 1, 1)
+                return lerp_color(c1, c2, t)
+
+            left_spans = [
+                f'<span foreground="{_grad_col(i, n)}">{CAVA_BLOCKS[v]}</span>'
+                for i, v in enumerate(left_half_vals)
+            ]
+            right_spans = [
+                f'<span foreground="{_grad_col(n - 1 - i, n)}">{CAVA_BLOCKS[v]}</span>'
+                for i, v in enumerate(right_half_vals)
+            ]
+            return f"{sep.join(left_spans)}{gap}{sep.join(right_spans)}"
+
+        else:
+            g_count = max(1, min(4, int(group_mode)))
+            group_palette = [c1, c2, c3, c4][:g_count]
+
+            def render_half(half_vals: list[int], is_left: bool) -> str:
+                groups_chunks: list[list[str]] = [[] for _ in range(g_count)]
+                for i, v in enumerate(half_vals):
+                    if direction == "middle-out":
+                        if is_left:
+                            g_idx = (g_count - 1) - int(i * g_count / n)
+                        else:
+                            g_idx = int(i * g_count / n)
+                    else:
+                        if is_left:
+                            g_idx = int(i * g_count / n)
+                        else:
+                            g_idx = (g_count - 1) - int(i * g_count / n)
+
+                    g_idx = max(0, min(g_count - 1, g_idx))
+                    color = group_palette[g_idx]
+                    char = CAVA_BLOCKS[v]
+                    groups_chunks[g_idx].append(f'<span foreground="{color}">{char}</span>')
+
+                if (direction == "middle-out" and is_left) or (direction == "edges-in" and not is_left):
+                    ordered_groups = [groups_chunks[g] for g in reversed(range(g_count)) if groups_chunks[g]]
+                else:
+                    ordered_groups = [groups_chunks[g] for g in range(g_count) if groups_chunks[g]]
+
+                inner_sep = sep
+                group_joiner = gap if group_gap else sep
+                return group_joiner.join(inner_sep.join(g) for g in ordered_groups if g)
+
+            left_rendered = render_half(left_half_vals, is_left=True)
+            right_rendered = render_half(right_half_vals, is_left=False)
+            return f"{left_rendered}{gap}{right_rendered}"
+
+    else:
+        # Linear layouts: "left-to-right" or "right-to-left"
+        linear_vals = list(processed) if direction == "left-to-right" else list(reversed(processed))
+
+        if group_mode == "gradient":
+            spans = []
+            for i, v in enumerate(linear_vals):
+                t = i / max(n - 1, 1)
+                color = lerp_color(c1, c2, t)
+                spans.append(f'<span foreground="{color}">{CAVA_BLOCKS[v]}</span>')
+            return sep.join(spans)
+
+        else:
+            g_count = max(1, min(4, int(group_mode)))
+            group_palette = [c1, c2, c3, c4][:g_count]
+            group_blocks: list[list[str]] = [[] for _ in range(g_count)]
+
+            for i, v in enumerate(linear_vals):
+                g_idx = min(g_count - 1, int(i * g_count / n))
+                color = group_palette[g_idx]
+                group_blocks[g_idx].append(f'<span foreground="{color}">{CAVA_BLOCKS[v]}</span>')
+
+            group_joiner = gap if group_gap else sep
+            return group_joiner.join(sep.join(g) for g in group_blocks if g)
 
 
 def _write_cava_state_json(state: dict) -> None:
     """Sync relevant cava_* keys from theme state into waybar/cava-state.json."""
+    direction = str(state.get("cava_direction", ""))
+    if not direction:
+        direction = "middle-out" if state.get("cava_mirror", True) else "left-to-right"
+
+    group_mode = str(state.get("cava_group_mode", ""))
+    if not group_mode:
+        cm = str(state.get("cava_color_mode", "gradient"))
+        group_mode = "gradient" if cm == "gradient" else ("1" if cm == "solid" else "3")
+
     cava_state = {
         "freq_low": int(state.get("cava_freq_low", 20)),
         "freq_high": int(state.get("cava_freq_high", 1000)),
         "bars": int(state.get("cava_bars", 6)),
         "noise_reduction": round(int(state.get("cava_noise", 77)) / 100.0, 2),
         "sensitivity": int(state.get("cava_sensitivity", 100)),
-        "mirror": bool(state.get("cava_mirror", True)),
+        "direction": direction,
+        "mirror": direction in ("middle-out", "edges-in"),
+        "group_mode": group_mode,
+        "group_gap": bool(state.get("cava_group_gap", True)),
+        "bass_punch": bool(state.get("cava_bass_punch", True)),
+        "color_1": str(state.get("cava_color_1", state.get("cava_grad_from", "accent"))),
+        "color_2": str(state.get("cava_color_2", state.get("cava_grad_to", "gold"))),
+        "color_3": str(state.get("cava_color_3", "cyan")),
+        "color_4": str(state.get("cava_color_4", "red")),
         "color_mode": str(state.get("cava_color_mode", "gradient")),
-        "gradient_from": str(state.get("cava_grad_from", "accent")),
-        "gradient_to": str(state.get("cava_grad_to", "gold")),
+        "gradient_from": str(state.get("cava_grad_from", state.get("cava_color_1", "accent"))),
+        "gradient_to": str(state.get("cava_grad_to", state.get("cava_color_2", "gold"))),
         "framerate": int(state.get("cava_framerate", 24)),
         "silence_timeout": int(state.get("cava_silence", 32)),
         "bar_style": "blocks",

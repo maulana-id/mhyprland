@@ -28,6 +28,7 @@ PAGES = [
     ("theme", "󰏘", "Themes"),
     ("wallpaper", "󰸉", "Wallpaper"),
     ("bar", "󰕘", "Waybar"),
+    ("cava", "󰝚", "Visualizer"),
     ("desktop", "󰒓", "Desktop"),
     ("keys", "󰌌", "Keybinds"),
 ]
@@ -128,6 +129,9 @@ class ControlCenter(Gtk.Application):
         self.scales: dict[str, Gtk.Scale] = {}
         self.value_labels: dict[str, Gtk.Label] = {}
         self.cava_combos: dict[str, Gtk.ComboBoxText] = {}
+        self.cava_preview_lbl: Gtk.Label | None = None
+        self.cava_swatches: dict[str, Gtk.EventBox] = {}
+        self.cava_color_rows: dict[str, Gtk.Widget] = {}
         self._grad_rows: list[Gtk.Widget] = []
         self._css_provider: Gtk.CssProvider | None = None
         self._status_source: int | None = None
@@ -763,170 +767,23 @@ class ControlCenter(Gtk.Application):
         pos_card.pack_start(pos_row, False, False, 0)
         content.pack_start(pos_card, False, False, 0)
 
-        # ---- Music visualizer card ----------------------------------------
-        vis_card = vbox(4)
+        # ---- Music visualizer card (quick link to Visualizer page) --------
+        vis_card = vbox(6)
         vis_card.get_style_context().add_class("card")
         vis_card.set_margin_top(2)
-        vis_card.pack_start(lbl("Music visualizer", "theme-name"), False, False, 2)
+        top_v = hbox(8)
+        top_v.pack_start(lbl("Music visualizer", "theme-name"), True, True, 0)
+        top_v.pack_end(lbl("Cava", "pill"), False, False, 0)
+        vis_card.pack_start(top_v, False, False, 0)
         vis_card.pack_start(lbl(
-            "Bass-focused symmetric display — centre bar = lowest frequency.",
+            "Full audio spectrum analyzer customization: bar count, frequency range (Hz), "
+            "directions (centered, edges-in, left-to-right, right-to-left), color grouping (1, 2, 3, 4 groups, gradient), "
+            "and live preview.",
             "muted", wrap=True,
         ), False, False, 0)
-
-        # --- Frequency & Sensitivity sub-section ---
-        vis_card.pack_start(lbl("Frequency & Sensitivity", "setting-title"), False, False, 6)
-        for key, title, desc, min_val, max_val, step in (
-            ("cava_freq_low",    "Low cutoff",   "Lowest frequency shown (Hz).",          1,   500,  10),
-            ("cava_freq_high",   "High cutoff",  "Highest frequency shown (Hz).",        200,  2000,  50),
-            ("cava_bars",        "Bar pairs",    "Number of bar pairs (×2 = total bars shown).",
-                                                                                          2,    12,   1),
-            ("cava_sensitivity", "Sensitivity",  "Signal amplification.",                50,   300,   5),
-        ):
-            row = hbox(12)
-            row.set_margin_top(4)
-            text = vbox(1)
-            text.pack_start(lbl(title, "setting-title"), False, False, 0)
-            text.pack_start(lbl(desc, "muted", wrap=True), False, False, 0)
-            row.pack_start(text, True, True, 0)
-            value_lbl = lbl("0", "pill")
-            self.value_labels[key] = value_lbl
-            row.pack_end(value_lbl, False, False, 0)
-            scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, min_val, max_val, step)
-            scale.set_draw_value(False)
-            scale.set_size_request(190, -1)
-            scale.set_valign(Gtk.Align.CENTER)
-            scale.connect("value-changed", self.on_scale, key)
-            row.pack_end(scale, False, False, 0)
-            self.scales[key] = scale
-            vis_card.pack_start(row, False, False, 0)
-
-        # --- Display sub-section ---
-        vis_card.pack_start(Gtk.Separator(), False, False, 4)
-        vis_card.pack_start(lbl("Display", "setting-title"), False, False, 2)
-
-        # Mirror toggle
-        mirror_row = hbox(12)
-        mirror_row.set_margin_top(4)
-        mirror_text = vbox(1)
-        mirror_text.pack_start(lbl("Mirror", "setting-title"), False, False, 0)
-        mirror_text.pack_start(lbl("Symmetric layout — centre = bass, edges = treble.", "muted", wrap=True), False, False, 0)
-        mirror_row.pack_start(mirror_text, True, True, 0)
-        mirror_sw = Gtk.Switch()
-        mirror_sw.set_valign(Gtk.Align.CENTER)
-        mirror_sw.connect("state-set", self.on_switch, "cava_mirror")
-        mirror_row.pack_end(mirror_sw, False, False, 0)
-        self.switches["cava_mirror"] = mirror_sw
-        vis_card.pack_start(mirror_row, False, False, 0)
-
-        # Color mode combo
-        cm_row = hbox(12)
-        cm_row.set_margin_top(4)
-        cm_text = vbox(1)
-        cm_text.pack_start(lbl("Color mode", "setting-title"), False, False, 0)
-        cm_text.pack_start(lbl("gradient: lerp · theme: accent/gold/cyan groups · solid: accent only.", "muted", wrap=True), False, False, 0)
-        cm_row.pack_start(cm_text, True, True, 0)
-        cm_combo = Gtk.ComboBoxText()
-        for opt in ("gradient", "theme", "solid"):
-            cm_combo.append_text(opt)
-        cm_combo.connect("changed", self.on_cava_combo, "cava_color_mode")
-        cm_row.pack_end(cm_combo, False, False, 0)
-        self.cava_combos["cava_color_mode"] = cm_combo
-        vis_card.pack_start(cm_row, False, False, 0)
-
-        # Gradient from combo (hidden when color_mode != gradient)
-        grad_from_row = hbox(12)
-        grad_from_row.set_margin_top(4)
-        gf_text = vbox(1)
-        gf_text.pack_start(lbl("Gradient from", "setting-title"), False, False, 0)
-        gf_text.pack_start(lbl("Edge colour of the gradient.", "muted", wrap=True), False, False, 0)
-        grad_from_row.pack_start(gf_text, True, True, 0)
-        gf_combo = Gtk.ComboBoxText()
-        for opt in ("accent", "gold", "cyan", "red", "green", "blue", "fg"):
-            gf_combo.append_text(opt)
-        gf_combo.connect("changed", self.on_cava_combo, "cava_grad_from")
-        grad_from_row.pack_end(gf_combo, False, False, 0)
-        self.cava_combos["cava_grad_from"] = gf_combo
-        vis_card.pack_start(grad_from_row, False, False, 0)
-        self._grad_rows.append(grad_from_row)
-
-        # Gradient to combo
-        grad_to_row = hbox(12)
-        grad_to_row.set_margin_top(4)
-        gt_text = vbox(1)
-        gt_text.pack_start(lbl("Gradient to", "setting-title"), False, False, 0)
-        gt_text.pack_start(lbl("Centre colour of the gradient.", "muted", wrap=True), False, False, 0)
-        grad_to_row.pack_start(gt_text, True, True, 0)
-        gt_combo = Gtk.ComboBoxText()
-        for opt in ("accent", "gold", "cyan", "red", "green", "blue", "fg"):
-            gt_combo.append_text(opt)
-        gt_combo.connect("changed", self.on_cava_combo, "cava_grad_to")
-        grad_to_row.pack_end(gt_combo, False, False, 0)
-        self.cava_combos["cava_grad_to"] = gt_combo
-        vis_card.pack_start(grad_to_row, False, False, 0)
-        self._grad_rows.append(grad_to_row)
-
-        # Framerate slider
-        fr_row = hbox(12)
-        fr_row.set_margin_top(4)
-        fr_text = vbox(1)
-        fr_text.pack_start(lbl("Framerate", "setting-title"), False, False, 0)
-        fr_text.pack_start(lbl("Cava output frames per second.", "muted", wrap=True), False, False, 0)
-        fr_row.pack_start(fr_text, True, True, 0)
-        fr_val = lbl("24", "pill")
-        self.value_labels["cava_framerate"] = fr_val
-        fr_row.pack_end(fr_val, False, False, 0)
-        fr_scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 12, 60, 6)
-        fr_scale.set_draw_value(False)
-        fr_scale.set_size_request(190, -1)
-        fr_scale.set_valign(Gtk.Align.CENTER)
-        fr_scale.connect("value-changed", self.on_scale, "cava_framerate")
-        fr_row.pack_end(fr_scale, False, False, 0)
-        self.scales["cava_framerate"] = fr_scale
-        vis_card.pack_start(fr_row, False, False, 0)
-
-        # Silence hide delay slider
-        sil_row = hbox(12)
-        sil_row.set_margin_top(4)
-        sil_text = vbox(1)
-        sil_text.pack_start(lbl("Silence hide delay", "setting-title"), False, False, 0)
-        sil_text.pack_start(lbl("Frames of silence before hiding (0 = never hide).", "muted", wrap=True), False, False, 0)
-        sil_row.pack_start(sil_text, True, True, 0)
-        sil_val = lbl("32", "pill")
-        self.value_labels["cava_silence"] = sil_val
-        sil_row.pack_end(sil_val, False, False, 0)
-        sil_scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0, 120, 8)
-        sil_scale.set_draw_value(False)
-        sil_scale.set_size_request(190, -1)
-        sil_scale.set_valign(Gtk.Align.CENTER)
-        sil_scale.connect("value-changed", self.on_scale, "cava_silence")
-        sil_row.pack_end(sil_scale, False, False, 0)
-        self.scales["cava_silence"] = sil_scale
-        vis_card.pack_start(sil_row, False, False, 0)
-
-        # Noise reduction slider
-        noise_row = hbox(12)
-        noise_row.set_margin_top(4)
-        noise_text = vbox(1)
-        noise_text.pack_start(lbl("Smoothing", "setting-title"), False, False, 0)
-        noise_text.pack_start(lbl("Noise reduction 0–100 (higher = smoother).", "muted", wrap=True), False, False, 0)
-        noise_row.pack_start(noise_text, True, True, 0)
-        noise_val = lbl("77", "pill")
-        self.value_labels["cava_noise"] = noise_val
-        noise_row.pack_end(noise_val, False, False, 0)
-        noise_scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0, 100, 1)
-        noise_scale.set_draw_value(False)
-        noise_scale.set_size_request(190, -1)
-        noise_scale.set_valign(Gtk.Align.CENTER)
-        noise_scale.connect("value-changed", self.on_scale, "cava_noise")
-        noise_row.pack_end(noise_scale, False, False, 0)
-        self.scales["cava_noise"] = noise_scale
-        vis_card.pack_start(noise_row, False, False, 0)
-
-        # Reset button
-        vis_card.pack_start(Gtk.Separator(), False, False, 4)
-        reset_btn = button("Reset defaults", "ghost", self.reset_cava_defaults, icon="󰑓")
-        vis_card.pack_start(reset_btn, False, False, 0)
-
+        vis_act = hbox(8)
+        vis_act.pack_start(button("Customize visualizer…", "accent", lambda: self.show_page("cava"), icon="󰝚"), False, False, 0)
+        vis_card.pack_start(vis_act, False, False, 2)
         content.pack_start(vis_card, False, False, 0)
         # -------------------------------------------------------------------
 
@@ -970,27 +827,373 @@ class ControlCenter(Gtk.Application):
         else:
             self.set_status("Waybar failed to start", timeout=8)
 
+    # ------------------------------------------------------------------ #
+    # visualizer page
+    # ------------------------------------------------------------------ #
+    def make_cava_page(self) -> Gtk.Widget:
+        scroll, content = self.page()
+        content.pack_start(section_title(
+            "Music visualizer",
+            "Real-time audio spectrum analyzer. Customize bar count, captured Hertz range, "
+            "stereo/centered directions, color group splits, and responsiveness.",
+        ), False, False, 0)
+
+        # 1. Live Preview Card
+        prev_card = vbox(8)
+        prev_card.get_style_context().add_class("card")
+        prev_top = hbox(8)
+        prev_top.pack_start(lbl("Live preview", "theme-name"), True, True, 0)
+        prev_top.pack_end(lbl("Simulated audio", "pill"), False, False, 0)
+        prev_card.pack_start(prev_top, False, False, 0)
+
+        prev_box = hbox(12)
+        prev_box.get_style_context().add_class("footer")
+        prev_box.set_size_request(-1, 56)
+        prev_box.set_margin_top(4)
+        prev_box.set_margin_bottom(4)
+
+        prev_icon = lbl("󰝚", "action-icon")
+        prev_icon.set_margin_start(16)
+        prev_box.pack_start(prev_icon, False, False, 0)
+
+        self.cava_preview_lbl = lbl("", markup=True)
+        self.cava_preview_lbl.set_valign(Gtk.Align.CENTER)
+        prev_box.pack_start(self.cava_preview_lbl, True, True, 0)
+
+        prev_track = lbl("Now Playing · Preview", "muted")
+        prev_track.set_margin_end(16)
+        prev_box.pack_end(prev_track, False, False, 0)
+
+        prev_card.pack_start(prev_box, False, False, 0)
+        content.pack_start(prev_card, False, False, 0)
+
+        # 2. Frequency Range Card
+        freq_card = vbox(8)
+        freq_card.get_style_context().add_class("card")
+        freq_card.pack_start(lbl("Frequency response (Hz)", "theme-name"), False, False, 0)
+        freq_card.pack_start(lbl(
+            "Range of Hertz captured and displayed. Lower cutoff isolates sub/bass; higher cutoff controls treble presence.",
+            "muted", wrap=True
+        ), False, False, 0)
+
+        preset_row = hbox(8)
+        preset_row.set_margin_top(4)
+        for p_name, p_low, p_high in (
+            ("Bass Only", 20, 500),
+            ("Bass & Mids", 20, 2500),
+            ("Vocals & Lead", 100, 8000),
+            ("Full Spectrum", 20, 20000),
+        ):
+            btn = button(p_name, "ghost", lambda l=p_low, h=p_high: self.set_cava_freq_preset(l, h))
+            preset_row.pack_start(btn, False, False, 0)
+        freq_card.pack_start(preset_row, False, False, 0)
+
+        for key, title, desc, min_val, max_val, step in (
+            ("cava_freq_low",  "Low cutoff",  "Lowest frequency captured (Hz).", 1, 1000, 10),
+            ("cava_freq_high", "High cutoff", "Highest frequency captured (Hz).", 100, 22000, 250),
+        ):
+            row = hbox(12)
+            row.set_margin_top(4)
+            text = vbox(1)
+            text.pack_start(lbl(title, "setting-title"), False, False, 0)
+            text.pack_start(lbl(desc, "muted", wrap=True), False, False, 0)
+            row.pack_start(text, True, True, 0)
+            val_lbl = lbl("0", "pill")
+            self.value_labels[key] = val_lbl
+            row.pack_end(val_lbl, False, False, 0)
+            scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, min_val, max_val, step)
+            scale.set_draw_value(False)
+            scale.set_size_request(220, -1)
+            scale.set_valign(Gtk.Align.CENTER)
+            scale.connect("value-changed", self.on_scale, key)
+            row.pack_end(scale, False, False, 0)
+            self.scales[key] = scale
+            freq_card.pack_start(row, False, False, 0)
+
+        content.pack_start(freq_card, False, False, 0)
+
+        # 3. Bar Count & Direction Card
+        layout_card = vbox(8)
+        layout_card.get_style_context().add_class("card")
+        layout_card.pack_start(lbl("Bar layout & direction", "theme-name"), False, False, 0)
+        layout_card.pack_start(lbl(
+            "Change how many frequency bands are rendered and which direction they flow.",
+            "muted", wrap=True
+        ), False, False, 0)
+
+        bar_preset_row = hbox(8)
+        bar_preset_row.set_margin_top(4)
+        for b_name, b_val in (
+            ("Mini (4)", 4),
+            ("Compact (6)", 6),
+            ("Standard (10)", 10),
+            ("Dense (16)", 16),
+            ("Ultra (24)", 24),
+        ):
+            btn = button(b_name, "ghost", lambda b=b_val: self.set_cava_bar_preset(b))
+            bar_preset_row.pack_start(btn, False, False, 0)
+        layout_card.pack_start(bar_preset_row, False, False, 0)
+
+        b_row = hbox(12)
+        b_row.set_margin_top(4)
+        b_text = vbox(1)
+        b_text.pack_start(lbl("Bar count", "setting-title"), False, False, 0)
+        b_text.pack_start(lbl("Number of frequency bands (mirrored modes display 2× bars).", "muted", wrap=True), False, False, 0)
+        b_row.pack_start(b_text, True, True, 0)
+        b_val_lbl = lbl("6", "pill")
+        self.value_labels["cava_bars"] = b_val_lbl
+        b_row.pack_end(b_val_lbl, False, False, 0)
+        b_scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 2, 32, 1)
+        b_scale.set_draw_value(False)
+        b_scale.set_size_request(220, -1)
+        b_scale.set_valign(Gtk.Align.CENTER)
+        b_scale.connect("value-changed", self.on_scale, "cava_bars")
+        b_row.pack_end(b_scale, False, False, 0)
+        self.scales["cava_bars"] = b_scale
+        layout_card.pack_start(b_row, False, False, 0)
+
+        dir_row = hbox(12)
+        dir_row.set_margin_top(6)
+        dir_text = vbox(1)
+        dir_text.pack_start(lbl("Bars direction", "setting-title"), False, False, 0)
+        dir_text.pack_start(lbl("Arrangement order of the frequency bands.", "muted", wrap=True), False, False, 0)
+        dir_row.pack_start(dir_text, True, True, 0)
+        dir_combo = Gtk.ComboBoxText()
+        dir_options = [
+            ("middle-out", "In the middle (Bass Centered / Mirrored)"),
+            ("edges-in", "Outside in (Treble Centered / Mirrored)"),
+            ("left-to-right", "In order from left (Bass ➔ Treble)"),
+            ("right-to-left", "In order from right (Treble ➔ Bass)"),
+        ]
+        for opt_id, opt_label in dir_options:
+            dir_combo.append(opt_id, opt_label)
+        dir_combo.connect("changed", self.on_cava_combo, "cava_direction")
+        dir_row.pack_end(dir_combo, False, False, 0)
+        self.cava_combos["cava_direction"] = dir_combo
+        layout_card.pack_start(dir_row, False, False, 0)
+
+        punch_row = hbox(12)
+        punch_row.set_margin_top(4)
+        punch_text = vbox(1)
+        punch_text.pack_start(lbl("Bass punch boost", "setting-title"), False, False, 0)
+        punch_text.pack_start(lbl("Boosts lowest frequencies by +1 level so kick drums and 808s stand out.", "muted", wrap=True), False, False, 0)
+        punch_row.pack_start(punch_text, True, True, 0)
+        punch_sw = Gtk.Switch()
+        punch_sw.set_valign(Gtk.Align.CENTER)
+        punch_sw.connect("state-set", self.on_switch, "cava_bass_punch")
+        punch_row.pack_end(punch_sw, False, False, 0)
+        self.switches["cava_bass_punch"] = punch_sw
+        layout_card.pack_start(punch_row, False, False, 0)
+
+        content.pack_start(layout_card, False, False, 0)
+
+        # 4. Grouping & Colors Card
+        color_card = vbox(8)
+        color_card.get_style_context().add_class("card")
+        color_card.pack_start(lbl("Grouping & Colors", "theme-name"), False, False, 0)
+        color_card.pack_start(lbl(
+            "Split the bars into distinct colored groups or a continuous color gradient.",
+            "muted", wrap=True
+        ), False, False, 0)
+
+        gm_row = hbox(12)
+        gm_row.set_margin_top(4)
+        gm_text = vbox(1)
+        gm_text.pack_start(lbl("Grouping mode", "setting-title"), False, False, 0)
+        gm_text.pack_start(lbl("Split into 1, 2, 3, 4 frequency groups or a continuous gradient.", "muted", wrap=True), False, False, 0)
+        gm_row.pack_start(gm_text, True, True, 0)
+        gm_combo = Gtk.ComboBoxText()
+        gm_options = [
+            ("1", "1 Group (Solid Color)"),
+            ("2", "2 Groups (Split 2 Bands)"),
+            ("3", "3 Groups (Split 3 Bands: Bass / Mid / Treble)"),
+            ("4", "4 Groups (Split 4 Bands: Sub / Low / Mid / High)"),
+            ("gradient", "Gradient (Smooth Color Transition)"),
+        ]
+        for g_id, g_lbl in gm_options:
+            gm_combo.append(g_id, g_lbl)
+        gm_combo.connect("changed", self.on_cava_combo, "cava_group_mode")
+        gm_row.pack_end(gm_combo, False, False, 0)
+        self.cava_combos["cava_group_mode"] = gm_combo
+        color_card.pack_start(gm_row, False, False, 0)
+
+        gap_row = hbox(12)
+        gap_row.set_margin_top(4)
+        gap_text = vbox(1)
+        gap_text.pack_start(lbl("Group spacing gap", "setting-title"), False, False, 0)
+        gap_text.pack_start(lbl("Insert visible space between frequency groups for clean visual separation.", "muted", wrap=True), False, False, 0)
+        gap_row.pack_start(gap_text, True, True, 0)
+        gap_sw = Gtk.Switch()
+        gap_sw.set_valign(Gtk.Align.CENTER)
+        gap_sw.connect("state-set", self.on_switch, "cava_group_gap")
+        gap_row.pack_end(gap_sw, False, False, 0)
+        self.switches["cava_group_gap"] = gap_sw
+        color_card.pack_start(gap_row, False, False, 0)
+
+        color_card.pack_start(Gtk.Separator(), False, False, 4)
+        color_choices = ("accent", "accent_alt", "gold", "cyan", "green", "red", "blue", "magenta", "orange", "fg")
+        theme_colors = engine.load_theme()["colors"]
+
+        for c_key, c_title, c_desc in (
+            ("cava_color_1", "Group 1 / Gradient From", "First group (bass/left) or gradient start color."),
+            ("cava_color_2", "Group 2 / Gradient To",   "Second group (mid/treble) or gradient end color."),
+            ("cava_color_3", "Group 3",                 "Third group (treble/high mid)."),
+            ("cava_color_4", "Group 4",                 "Fourth group (highest frequencies)."),
+        ):
+            c_row = hbox(12)
+            c_row.set_margin_top(4)
+            c_text = vbox(1)
+            c_text.pack_start(lbl(c_title, "setting-title"), False, False, 0)
+            c_text.pack_start(lbl(c_desc, "muted", wrap=True), False, False, 0)
+            c_row.pack_start(c_text, True, True, 0)
+
+            c_swatch = swatch(theme_colors.get("accent", "#ffffff"), width=24, height=24)
+            self.cava_swatches[c_key] = c_swatch
+            c_row.pack_end(c_swatch, False, False, 0)
+
+            c_combo = Gtk.ComboBoxText()
+            for opt in color_choices:
+                c_combo.append(opt, opt)
+            c_combo.connect("changed", self.on_cava_combo, c_key)
+            c_row.pack_end(c_combo, False, False, 0)
+            self.cava_combos[c_key] = c_combo
+
+            color_card.pack_start(c_row, False, False, 0)
+            self.cava_color_rows[c_key] = c_row
+
+        content.pack_start(color_card, False, False, 0)
+
+        # 5. Engine & Dynamics Card
+        dyn_card = vbox(8)
+        dyn_card.get_style_context().add_class("card")
+        dyn_card.pack_start(lbl("Dynamics & Performance", "theme-name"), False, False, 0)
+        dyn_card.pack_start(lbl(
+            "Tune audio sensitivity, smoothing, framerate, and auto-hide timing.",
+            "muted", wrap=True
+        ), False, False, 0)
+
+        for key, title, desc, min_val, max_val, step in (
+            ("cava_sensitivity", "Sensitivity",        "Audio input gain multiplier (%).",              50,  300, 5),
+            ("cava_noise",       "Smoothing (Noise)",  "Noise reduction (higher = smoother flow).",       0,  100, 1),
+            ("cava_framerate",   "Framerate",          "Cava rendering frames per second.",              12,   60, 6),
+            ("cava_silence",     "Silence hide delay", "Frames of silence before hiding (0 = never hide).", 0, 120, 4),
+        ):
+            row = hbox(12)
+            row.set_margin_top(4)
+            text = vbox(1)
+            text.pack_start(lbl(title, "setting-title"), False, False, 0)
+            text.pack_start(lbl(desc, "muted", wrap=True), False, False, 0)
+            row.pack_start(text, True, True, 0)
+            val_lbl = lbl("0", "pill")
+            self.value_labels[key] = val_lbl
+            row.pack_end(val_lbl, False, False, 0)
+            scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, min_val, max_val, step)
+            scale.set_draw_value(False)
+            scale.set_size_request(220, -1)
+            scale.set_valign(Gtk.Align.CENTER)
+            scale.connect("value-changed", self.on_scale, key)
+            row.pack_end(scale, False, False, 0)
+            self.scales[key] = scale
+            dyn_card.pack_start(row, False, False, 0)
+
+        content.pack_start(dyn_card, False, False, 0)
+
+        # 6. Action buttons
+        actions = hbox(8)
+        actions.pack_start(button("Restart visualizer", "accent", self.restart_visualizer, icon="󰑓"), False, False, 0)
+        actions.pack_start(button("Reset defaults", "ghost", self.reset_cava_defaults, icon="󰑓"), False, False, 0)
+        actions.pack_start(button("Waybar layout", "ghost", lambda: self.show_page("bar"), icon="󰕘"), False, False, 0)
+        content.pack_start(actions, False, False, 0)
+
+        return scroll
+
+    def set_cava_freq_preset(self, low: int, high: int) -> None:
+        try:
+            engine.set_option("cava_freq_low", low)
+            engine.set_option("cava_freq_high", high)
+            if "cava_freq_low" in self.scales:
+                self.scales["cava_freq_low"].set_value(low)
+            if "cava_freq_high" in self.scales:
+                self.scales["cava_freq_high"].set_value(high)
+            self.update_cava_preview()
+            self.set_status(f"Frequency range: {low} Hz – {high} Hz")
+        except Exception as exc:
+            self.show_error(str(exc))
+
+    def set_cava_bar_preset(self, count: int) -> None:
+        try:
+            engine.set_option("cava_bars", count)
+            if "cava_bars" in self.scales:
+                self.scales["cava_bars"].set_value(count)
+            self.update_cava_preview()
+            self.set_status(f"Bars: {count}")
+        except Exception as exc:
+            self.show_error(str(exc))
+
+    def restart_visualizer(self) -> None:
+        self.set_status("Restarting visualizer…", timeout=0)
+        self.pump()
+        engine._signal_cava_waybar()
+        self.update_cava_preview()
+        self.set_status("Visualizer reloaded")
+
+    def update_cava_preview(self) -> None:
+        if self.cava_preview_lbl is None:
+            return
+        try:
+            colors = engine.load_theme()["colors"]
+            state = engine.load_state()
+            bars_count = int(state.get("cava_bars", 6))
+            sample = []
+            for i in range(bars_count):
+                t = i / max(bars_count - 1, 1)
+                val = int(6.5 * (1.0 - 0.7 * t) + 1.2 * (1.0 if i % 2 == 0 else 0.4))
+                sample.append(max(1, min(7, val)))
+
+            cava_state = {
+                "direction": state.get("cava_direction", "middle-out"),
+                "group_mode": state.get("cava_group_mode", "gradient"),
+                "group_gap": state.get("cava_group_gap", True),
+                "bass_punch": state.get("cava_bass_punch", True),
+                "color_1": state.get("cava_color_1", "accent"),
+                "color_2": state.get("cava_color_2", "gold"),
+                "color_3": state.get("cava_color_3", "cyan"),
+                "color_4": state.get("cava_color_4", "red"),
+            }
+            rendered = engine.render_cava(sample, colors, cava_state)
+            self.cava_preview_lbl.set_markup(f"<span font_size='15pt'>{rendered}</span>")
+        except Exception:
+            pass
+
+    def _update_color_rows_visibility(self, group_mode: str) -> None:
+        if "cava_color_2" in self.cava_color_rows:
+            self.cava_color_rows["cava_color_2"].set_visible(group_mode in ("2", "3", "4", "gradient"))
+        if "cava_color_3" in self.cava_color_rows:
+            self.cava_color_rows["cava_color_3"].set_visible(group_mode in ("3", "4"))
+        if "cava_color_4" in self.cava_color_rows:
+            self.cava_color_rows["cava_color_4"].set_visible(group_mode == "4")
+
     def on_cava_combo(self, combo: Gtk.ComboBoxText, key: str) -> None:
         if self._syncing:
             return
-        value = combo.get_active_text()
+        value = combo.get_active_id() or combo.get_active_text()
         if value is None:
             return
         try:
             engine.set_option(key, value)
             self.refresh_status()
             self.set_status(f"{key} → {value}")
+            if key == "cava_group_mode":
+                self._update_color_rows_visibility(value)
+            if key in self.cava_swatches:
+                theme_colors = engine.load_theme()["colors"]
+                c_val = theme_colors.get(value, "#ffffff")
+                rgba = Gdk.RGBA()
+                if rgba.parse(c_val):
+                    self.cava_swatches[key].override_background_color(Gtk.StateFlags.NORMAL, rgba)
+            self.update_cava_preview()
         except Exception as exc:
             self.show_error(str(exc))
-            return
-        # Show/hide gradient rows based on color_mode selection
-        if key == "cava_color_mode":
-            self._update_grad_rows_visibility(value)
-
-    def _update_grad_rows_visibility(self, color_mode: str) -> None:
-        show = color_mode == "gradient"
-        for row in self._grad_rows:
-            row.set_visible(show)
 
     def reset_cava_defaults(self) -> None:
         self.set_status("Resetting visualizer defaults…", timeout=0)
@@ -1002,6 +1205,14 @@ class ControlCenter(Gtk.Application):
             "cava_noise": 77,
             "cava_sensitivity": 100,
             "cava_mirror": True,
+            "cava_direction": "middle-out",
+            "cava_group_mode": "gradient",
+            "cava_group_gap": True,
+            "cava_bass_punch": True,
+            "cava_color_1": "accent",
+            "cava_color_2": "gold",
+            "cava_color_3": "cyan",
+            "cava_color_4": "red",
             "cava_color_mode": "gradient",
             "cava_grad_from": "accent",
             "cava_grad_to": "gold",
@@ -1145,6 +1356,8 @@ class ControlCenter(Gtk.Application):
             engine.set_option(key, state)
             self.refresh_status()
             self.set_status(f"{key}: {'on' if state else 'off'}")
+            if key.startswith("cava_"):
+                self.update_cava_preview()
         except Exception as exc:
             self.show_error(str(exc))
             return True
@@ -1154,6 +1367,8 @@ class ControlCenter(Gtk.Application):
         value = int(scale.get_value())
         if key in self.value_labels:
             self.value_labels[key].set_text(str(value))
+        if key.startswith("cava_"):
+            self.update_cava_preview()
         if self._syncing:
             return
         if key in self._pending_options:
@@ -1166,6 +1381,8 @@ class ControlCenter(Gtk.Application):
             engine.set_option(key, value)
             self.refresh_status()
             self.set_status(f"{key} → {value}")
+            if key.startswith("cava_"):
+                self.update_cava_preview()
         except Exception as exc:
             self.show_error(str(exc))
         return False
@@ -1179,15 +1396,27 @@ class ControlCenter(Gtk.Application):
             scale.set_value(int(state.get(key, 0)))
             if key in self.value_labels:
                 self.value_labels[key].set_text(str(int(state.get(key, 0))))
-        color_mode_opts = ["gradient", "theme", "solid"]
-        color_key_opts = ["accent", "gold", "cyan", "red", "green", "blue", "fg"]
         for key, combo in self.cava_combos.items():
-            val = state.get(key)
-            if key == "cava_color_mode" and val in color_mode_opts:
-                combo.set_active(color_mode_opts.index(val))
-            elif key in ("cava_grad_from", "cava_grad_to") and val in color_key_opts:
-                combo.set_active(color_key_opts.index(val))
-        self._update_grad_rows_visibility(state.get("cava_color_mode", "gradient"))
+            val = str(state.get(key, ""))
+            if val:
+                combo.set_active_id(val)
+                if combo.get_active() < 0:
+                    model = combo.get_model()
+                    if model:
+                        for idx, row in enumerate(model):
+                            if row[0] == val or row[1] == val:
+                                combo.set_active(idx)
+                                break
+        theme_colors = engine.load_theme()["colors"]
+        for key, swatch_box in self.cava_swatches.items():
+            color_name = str(state.get(key, "accent"))
+            c_val = theme_colors.get(color_name, "#ffffff")
+            rgba = Gdk.RGBA()
+            if rgba.parse(c_val):
+                swatch_box.override_background_color(Gtk.StateFlags.NORMAL, rgba)
+        gm = str(state.get("cava_group_mode", "gradient"))
+        self._update_color_rows_visibility(gm)
+        self.update_cava_preview()
         self._syncing = False
 
     def reapply_theme(self) -> None:

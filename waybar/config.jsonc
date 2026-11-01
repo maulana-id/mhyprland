@@ -94,8 +94,8 @@
     }
   },
   "network": {
-    "format": "{icon} {essid}",
-    "format-wifi": "{icon} {essid}",
+    "format": "{icon}",
+    "format-wifi": "{icon}",
     "format-ethernet": "\udb80\ude00 wired",
     "format-disconnected": "\udb82\udd2e offline",
     "format-icons": [
@@ -121,7 +121,7 @@
   "battery": {
     "format": "{capacity}% {icon}",
     "format-charging": "{capacity}% \udb80\udc84",
-    "format-plugged": " plugged",
+    "format-plugged": "\uf1e6",
     "format-icons": {
       "charging": [
         "\udb82\udc9c",
@@ -163,11 +163,11 @@
       "mode": "month",
       "weeks-pos": "right",
       "format": {
-        "months":     "<span color='#cdd6f4'><b>{}</b></span>",
-        "days":       "<span color='#cdd6f4'>{}</span>",
-        "weeks":      "<span color='#6c7086'>W{}</span>",
-        "weekdays":   "<span color='#89b4fa'><b>{}</b></span>",
-        "today":      "<span color='#f38ba8'><b>{}</b></span>"
+        "months": "<span color='#cdd6f4'><b>{}</b></span>",
+        "days": "<span color='#cdd6f4'>{}</span>",
+        "weeks": "<span color='#6c7086'>W{}</span>",
+        "weekdays": "<span color='#89b4fa'><b>{}</b></span>",
+        "today": "<span color='#f38ba8'><b>{}</b></span>"
       }
     },
     "actions": {
@@ -199,6 +199,7 @@
       "wallpaper_random": "$HOME/.config/hypr/scripts/wallpaper-set --random",
       "wallpaper_picker": "$HOME/.config/hypr/scripts/hypr-control-center --tab wallpaper",
       "waybar_picker": "$HOME/.config/hypr/scripts/hypr-control-center --tab bar",
+      "cava_picker": "$HOME/.config/hypr/scripts/hypr-control-center --tab cava",
       "waybar_restart": "$HOME/.config/waybar/scripts/restart-waybar",
       "notifications": "dunstctl set-paused toggle",
       "updates": "$HOME/.config/waybar/scripts/open-updates",

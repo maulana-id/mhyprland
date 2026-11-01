@@ -199,6 +199,7 @@
       "wallpaper_random": "$HOME/.config/hypr/scripts/wallpaper-set --random",
       "wallpaper_picker": "$HOME/.config/hypr/scripts/hypr-control-center --tab wallpaper",
       "waybar_picker": "$HOME/.config/hypr/scripts/hypr-control-center --tab bar",
+      "cava_picker": "$HOME/.config/hypr/scripts/hypr-control-center --tab cava",
       "waybar_restart": "$HOME/.config/waybar/scripts/restart-waybar",
       "notifications": "dunstctl set-paused toggle",
       "updates": "$HOME/.config/waybar/scripts/open-updates",

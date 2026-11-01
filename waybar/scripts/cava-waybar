@@ -39,7 +39,15 @@ CAVA_DEFAULTS: dict = {
     "bars": 6,
     "noise_reduction": 0.77,
     "sensitivity": 100,
+    "direction": "middle-out",
     "mirror": True,
+    "group_mode": "gradient",
+    "group_gap": True,
+    "bass_punch": True,
+    "color_1": "accent",
+    "color_2": "gold",
+    "color_3": "cyan",
+    "color_4": "red",
     "color_mode": "gradient",
     "gradient_from": "accent",
     "gradient_to": "gold",
@@ -48,8 +56,9 @@ CAVA_DEFAULTS: dict = {
     "bar_style": "blocks",
 }
 
-ALLOWED_COLOR_KEYS = {"accent", "gold", "cyan", "red", "green", "blue", "fg"}
-ALLOWED_COLOR_MODES = {"gradient", "theme", "solid"}
+ALLOWED_COLOR_KEYS = {"accent", "accent_alt", "gold", "cyan", "green", "red", "blue", "magenta", "orange", "fg"}
+ALLOWED_DIRECTIONS = {"middle-out", "edges-in", "left-to-right", "right-to-left"}
+ALLOWED_GROUP_MODES = {"1", "2", "3", "4", "gradient"}
 
 
 def load_cava_state() -> dict:
@@ -62,20 +71,32 @@ def load_cava_state() -> dict:
         except (OSError, json.JSONDecodeError):
             pass
     # Clamp / validate values
-    state["bars"] = max(2, min(12, int(state.get("bars", CAVA_DEFAULTS["bars"]))))
-    state["freq_low"] = max(1, int(state.get("freq_low", CAVA_DEFAULTS["freq_low"])))
-    state["freq_high"] = max(200, int(state.get("freq_high", CAVA_DEFAULTS["freq_high"])))
+    state["bars"] = max(2, min(32, int(state.get("bars", CAVA_DEFAULTS["bars"]))))
+    state["freq_low"] = max(1, min(1000, int(state.get("freq_low", CAVA_DEFAULTS["freq_low"]))))
+    state["freq_high"] = max(100, min(22000, int(state.get("freq_high", CAVA_DEFAULTS["freq_high"]))))
     state["noise_reduction"] = float(state.get("noise_reduction", CAVA_DEFAULTS["noise_reduction"]))
     state["sensitivity"] = max(50, min(300, int(state.get("sensitivity", CAVA_DEFAULTS["sensitivity"]))))
     state["framerate"] = max(12, min(60, int(state.get("framerate", CAVA_DEFAULTS["framerate"]))))
     state["silence_timeout"] = max(0, min(120, int(state.get("silence_timeout", CAVA_DEFAULTS["silence_timeout"]))))
-    state["mirror"] = bool(state.get("mirror", CAVA_DEFAULTS["mirror"]))
-    cm = str(state.get("color_mode", CAVA_DEFAULTS["color_mode"]))
-    state["color_mode"] = cm if cm in ALLOWED_COLOR_MODES else "gradient"
-    gf = str(state.get("gradient_from", CAVA_DEFAULTS["gradient_from"]))
-    state["gradient_from"] = gf if gf in ALLOWED_COLOR_KEYS else "accent"
-    gt = str(state.get("gradient_to", CAVA_DEFAULTS["gradient_to"]))
-    state["gradient_to"] = gt if gt in ALLOWED_COLOR_KEYS else "gold"
+
+    direction = str(state.get("direction", ""))
+    if not direction:
+        direction = "middle-out" if state.get("mirror", True) else "left-to-right"
+    state["direction"] = direction if direction in ALLOWED_DIRECTIONS else "middle-out"
+    state["mirror"] = state["direction"] in ("middle-out", "edges-in")
+
+    gm = str(state.get("group_mode", ""))
+    if not gm:
+        cm = str(state.get("color_mode", "gradient"))
+        gm = "gradient" if cm == "gradient" else ("1" if cm == "solid" else "3")
+    state["group_mode"] = gm if gm in ALLOWED_GROUP_MODES else "gradient"
+    state["group_gap"] = bool(state.get("group_gap", True))
+    state["bass_punch"] = bool(state.get("bass_punch", True))
+
+    for c_key in ("color_1", "color_2", "color_3", "color_4", "gradient_from", "gradient_to"):
+        c_val = str(state.get(c_key, CAVA_DEFAULTS.get(c_key, "accent")))
+        state[c_key] = c_val if c_val in ALLOWED_COLOR_KEYS else "accent"
+
     return state
 
 
@@ -197,106 +218,7 @@ def parse_values(line: str, num_bars: int) -> list[int] | None:
 
 
 def render(values: list[int], colors: dict, cava_state: dict) -> str:
-    """
-    Render bars as Pango markup.
-
-    Mirror mode (mirror=True):
-      cava outputs bar1 (lowest freq) first, barN (highest) last.
-      Display: barN…bar1 | bar1…barN  (centre=lowest, edges=highest)
-      Gradient applied per displayed bar position.
-
-    Normal mode (mirror=False):
-      Display: bar1…barN (low to high, left to right)
-
-    Color modes:
-      gradient - smooth lerp between colors[gradient_from] and colors[gradient_to]
-      theme    - original 3-group coloring (accent/gold/cyan per 4 bars)
-      solid    - all bars in accent color
-    """
-    n = len(values)
-    if n == 0:
-        return ""
-
-    mirror: bool = cava_state.get("mirror", True)
-    color_mode: str = cava_state.get("color_mode", "gradient")
-    grad_from: str = cava_state.get("gradient_from", "accent")
-    grad_to: str = cava_state.get("gradient_to", "gold")
-
-    sep = "\u2009"  # thin space
-
-    if mirror:
-        # Build list of (value, display_index_in_full_array) for 2*n bars
-        # Left half: [barN, barN-1, ..., bar1] = values reversed
-        # Right half: [bar1, bar2, ..., barN] = values as-is
-        display_values = list(reversed(values)) + list(values)
-        total = len(display_values)  # 2*n
-        centre = n  # index of the boundary (first bar of right half = bar1)
-
-        def _gradient_color(pos: int) -> str:
-            # pos: 0..total-1; centre is lowest freq
-            # distance from centre: 0 at pos=n-1 or pos=n (innermost), max at edges
-            dist_from_centre = abs(pos - (centre - 0.5)) / (centre - 0.5)
-            # dist_from_centre: 0 at centre gap, 1 at outermost edges
-            # We want: centre = grad_to, edges = grad_from
-            t = 1.0 - dist_from_centre  # t=1 at centre, t=0 at edges
-            edge_color = colors.get(grad_from, "#ffffff")
-            centre_color = colors.get(grad_to, "#ffcc00")
-            return _lerp_color(edge_color, centre_color, t)
-
-        chars: list[str] = []
-        for pos, val in enumerate(display_values):
-            char = BLOCKS[val]
-            if color_mode == "gradient":
-                color = _gradient_color(pos)
-                chars.append(f'<span foreground="{color}">{char}</span>')
-            elif color_mode == "solid":
-                color = colors.get("accent", "#ffffff")
-                chars.append(f'<span foreground="{color}">{char}</span>')
-            else:
-                # theme mode: group by position within a half
-                half_idx = pos if pos < n else total - 1 - pos
-                # half_idx: 0 (edge=highest) to n-1 (centre=lowest)
-                group_size = max(1, n // 3)
-                if half_idx < group_size:
-                    color = colors.get("accent", "#ffffff")
-                elif half_idx < 2 * group_size:
-                    color = colors.get("gold", "#ffcc00")
-                else:
-                    color = colors.get("cyan", "#00ffff")
-                chars.append(f'<span foreground="{color}">{char}</span>')
-
-        # Split into left/right halves with a small space between
-        left = sep.join(chars[:n])
-        right = sep.join(chars[n:])
-        return f"{left} {right}"
-
-    else:
-        # Normal left-to-right display (bar1=lowest on left, barN=highest on right)
-        chars = []
-        for i, val in enumerate(values):
-            char = BLOCKS[val]
-            if color_mode == "gradient":
-                t = i / max(n - 1, 1)
-                edge_color = colors.get(grad_from, "#ffffff")
-                far_color = colors.get(grad_to, "#ffcc00")
-                color = _lerp_color(edge_color, far_color, t)
-                chars.append(f'<span foreground="{color}">{char}</span>')
-            elif color_mode == "solid":
-                color = colors.get("accent", "#ffffff")
-                chars.append(f'<span foreground="{color}">{char}</span>')
-            else:
-                # theme: replicate original 3-group behavior scaled to n bars
-                group_size = max(1, n // 3)
-                if i < group_size:
-                    if val > 0:
-                        val = min(7, val + 1)  # low-end punch
-                    color = colors.get("accent", "#ffffff")
-                elif i < 2 * group_size:
-                    color = colors.get("gold", "#ffcc00")
-                else:
-                    color = colors.get("cyan", "#00ffff")
-                chars.append(f'<span foreground="{color}">{char}</span>')
-        return sep.join(chars)
+    return engine.render_cava(values, colors, cava_state)
 
 
 def main() -> int:

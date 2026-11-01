@@ -102,7 +102,6 @@ button {
   font-size: 16px;
   padding: 0 8px;
   margin: 2px 4px;
-  min-width: 148px;  /* holds space even when cava text is empty — prevents bar re-layout glitch */
 }
 
 /* Workspaces — clickable: left = switch, right = close workspace */
