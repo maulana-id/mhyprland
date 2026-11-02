@@ -972,6 +972,46 @@ class ControlCenter(Gtk.Application):
         self.cava_combos["cava_direction"] = dir_combo
         layout_card.pack_start(dir_row, False, False, 0)
 
+        channels_row = hbox(12)
+        channels_row.set_margin_top(4)
+        channels_text = vbox(1)
+        channels_text.pack_start(lbl("Frequency channels", "setting-title"), False, False, 0)
+        channels_text.pack_start(lbl("Mono runs bass-to-treble left-to-right; stereo places bass in the center.", "muted", wrap=True), False, False, 0)
+        channels_row.pack_start(channels_text, True, True, 0)
+        channels_combo = Gtk.ComboBoxText()
+        channels_combo.append("mono", "Mono")
+        channels_combo.append("stereo", "Stereo")
+        channels_combo.connect("changed", self.on_cava_combo, "cava_channels")
+        channels_row.pack_end(channels_combo, False, False, 0)
+        self.cava_combos["cava_channels"] = channels_combo
+        layout_card.pack_start(channels_row, False, False, 0)
+
+        enabled_row = hbox(12)
+        enabled_row.set_margin_top(4)
+        enabled_text = vbox(1)
+        enabled_text.pack_start(lbl("Visualizer on", "setting-title"), False, False, 0)
+        enabled_text.pack_start(lbl("Disable the spectrum entirely without removing the module slot from the bar.", "muted", wrap=True), False, False, 0)
+        enabled_row.pack_start(enabled_text, True, True, 0)
+        enabled_sw = Gtk.Switch()
+        enabled_sw.set_valign(Gtk.Align.CENTER)
+        enabled_sw.connect("state-set", self.on_switch, "cava_enabled")
+        enabled_row.pack_end(enabled_sw, False, False, 0)
+        self.switches["cava_enabled"] = enabled_sw
+        layout_card.pack_start(enabled_row, False, False, 0)
+
+        mirror_row = hbox(12)
+        mirror_row.set_margin_top(4)
+        mirror_text = vbox(1)
+        mirror_text.pack_start(lbl("Mirrored bars", "setting-title"), False, False, 0)
+        mirror_text.pack_start(lbl("Reflect the spectrum around the center. Turn off for a single row of bars.", "muted", wrap=True), False, False, 0)
+        mirror_row.pack_start(mirror_text, True, True, 0)
+        mirror_sw = Gtk.Switch()
+        mirror_sw.set_valign(Gtk.Align.CENTER)
+        mirror_sw.connect("state-set", self.on_switch, "cava_mirror")
+        mirror_row.pack_end(mirror_sw, False, False, 0)
+        self.switches["cava_mirror"] = mirror_sw
+        layout_card.pack_start(mirror_row, False, False, 0)
+
         punch_row = hbox(12)
         punch_row.set_margin_top(4)
         punch_text = vbox(1)
@@ -1143,6 +1183,9 @@ class ControlCenter(Gtk.Application):
         try:
             colors = engine.load_theme()["colors"]
             state = engine.load_state()
+            if not bool(state.get("cava_enabled", True)):
+                self.cava_preview_lbl.set_markup("<span font_size='15pt'>Off</span>")
+                return
             bars_count = int(state.get("cava_bars", 6))
             sample = []
             for i in range(bars_count):
@@ -1181,6 +1224,11 @@ class ControlCenter(Gtk.Application):
             return
         try:
             engine.set_option(key, value)
+            if key == "cava_direction":
+                mirrored = value in ("middle-out", "edges-in")
+                engine.set_option("cava_mirror", mirrored)
+                if "cava_mirror" in self.switches:
+                    self.switches["cava_mirror"].set_active(mirrored)
             self.refresh_status()
             self.set_status(f"{key} → {value}")
             if key == "cava_group_mode":
@@ -1204,6 +1252,8 @@ class ControlCenter(Gtk.Application):
             "cava_bars": 6,
             "cava_noise": 77,
             "cava_sensitivity": 100,
+            "cava_enabled": True,
+            "cava_channels": "mono",
             "cava_mirror": True,
             "cava_direction": "middle-out",
             "cava_group_mode": "gradient",
@@ -1354,6 +1404,15 @@ class ControlCenter(Gtk.Application):
             return False
         try:
             engine.set_option(key, state)
+            if key == "cava_mirror":
+                current = str(engine.load_state().get("cava_direction", "middle-out"))
+                if state and current not in ("middle-out", "edges-in"):
+                    current = "middle-out"
+                elif not state and current in ("middle-out", "edges-in"):
+                    current = "left-to-right"
+                engine.set_option("cava_direction", current)
+                if "cava_direction" in self.cava_combos:
+                    self.cava_combos["cava_direction"].set_active_id(current)
             self.refresh_status()
             self.set_status(f"{key}: {'on' if state else 'off'}")
             if key.startswith("cava_"):

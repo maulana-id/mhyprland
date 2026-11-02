@@ -59,6 +59,8 @@ DEFAULT_STATE = {
     "cava_bars": 6,
     "cava_noise": 77,
     "cava_sensitivity": 100,
+    "cava_enabled": True,
+    "cava_channels": "mono",
     "cava_mirror": True,
     "cava_direction": "middle-out",
     "cava_group_mode": "gradient",
@@ -639,6 +641,9 @@ def apply_waybar(layout: str | None = None, position: str | None = None) -> dict
         config.update(json.loads(shared.read_text(encoding="utf-8")))
     config.update(json.loads(_waybar_preset_path(layout).read_text(encoding="utf-8")))
     config["position"] = position
+    if not state.get("cava_enabled", True):
+        for key in ("modules-left", "modules-center", "modules-right"):
+            config[key] = [m for m in config.get(key, []) if m != "custom/cava"]
     if position in {"left", "right"}:
         config["width"] = 72
         # Vertical bars need icon-first formats or text spills out of the pill.
@@ -710,8 +715,9 @@ _CAVA_INT_RANGES: dict[str, tuple[int, int]] = {
     "cava_framerate": (12, 60),
     "cava_silence": (0, 120),
 }
-_CAVA_BOOL_KEYS = {"cava_mirror", "cava_group_gap", "cava_bass_punch"}
+_CAVA_BOOL_KEYS = {"cava_enabled", "cava_mirror", "cava_group_gap", "cava_bass_punch"}
 _CAVA_STRING_OPTIONS: dict[str, set[str]] = {
+    "cava_channels": {"mono", "stereo"},
     "cava_direction": {"middle-out", "edges-in", "left-to-right", "right-to-left"},
     "cava_group_mode": {"1", "2", "3", "4", "gradient"},
     "cava_color_1": _COLOR_CHOICES,
@@ -758,7 +764,7 @@ def render_cava(values: list[int], colors: dict, cava_state: dict) -> str:
     if n == 0:
         return ""
 
-    direction: str = str(cava_state.get("direction", "middle-out"))
+    direction: str = str(cava_state.get("direction", ""))
     if not direction:
         direction = "middle-out" if cava_state.get("mirror", True) else "left-to-right"
 
@@ -791,6 +797,26 @@ def render_cava(values: list[int], colors: dict, cava_state: dict) -> str:
     sep = "\u2009"  # thin space within a group
     gap = " "       # space between groups
 
+    def _group_index(index: int, total: int, count: int) -> int:
+        quotient, remainder = divmod(total, count)
+        larger_groups_end = (quotient + 1) * remainder
+        if index < larger_groups_end:
+            return index // (quotient + 1)
+        return remainder + (index - larger_groups_end) // quotient
+
+    def _render_grouped(items: list[tuple[int, int]]) -> str:
+        count = min(4, n, max(1, int(group_mode)))
+        parts: list[str] = []
+        previous_group: int | None = None
+        for value, frequency_index in items:
+            group_index = _group_index(frequency_index, n, count)
+            color = [c1, c2, c3, c4][group_index]
+            if parts:
+                parts.append(gap if group_gap and group_index != previous_group else sep)
+            parts.append(f'<span foreground="{color}">{CAVA_BLOCKS[value]}</span>')
+            previous_group = group_index
+        return "".join(parts)
+
     if direction in ("middle-out", "edges-in"):
         if direction == "middle-out":
             left_half_vals = list(reversed(processed))  # treble -> bass
@@ -815,39 +841,10 @@ def render_cava(values: list[int], colors: dict, cava_state: dict) -> str:
             return f"{sep.join(left_spans)}{gap}{sep.join(right_spans)}"
 
         else:
-            g_count = max(1, min(4, int(group_mode)))
-            group_palette = [c1, c2, c3, c4][:g_count]
-
-            def render_half(half_vals: list[int], is_left: bool) -> str:
-                groups_chunks: list[list[str]] = [[] for _ in range(g_count)]
-                for i, v in enumerate(half_vals):
-                    if direction == "middle-out":
-                        if is_left:
-                            g_idx = (g_count - 1) - int(i * g_count / n)
-                        else:
-                            g_idx = int(i * g_count / n)
-                    else:
-                        if is_left:
-                            g_idx = int(i * g_count / n)
-                        else:
-                            g_idx = (g_count - 1) - int(i * g_count / n)
-
-                    g_idx = max(0, min(g_count - 1, g_idx))
-                    color = group_palette[g_idx]
-                    char = CAVA_BLOCKS[v]
-                    groups_chunks[g_idx].append(f'<span foreground="{color}">{char}</span>')
-
-                if (direction == "middle-out" and is_left) or (direction == "edges-in" and not is_left):
-                    ordered_groups = [groups_chunks[g] for g in reversed(range(g_count)) if groups_chunks[g]]
-                else:
-                    ordered_groups = [groups_chunks[g] for g in range(g_count) if groups_chunks[g]]
-
-                inner_sep = sep
-                group_joiner = gap if group_gap else sep
-                return group_joiner.join(inner_sep.join(g) for g in ordered_groups if g)
-
-            left_rendered = render_half(left_half_vals, is_left=True)
-            right_rendered = render_half(right_half_vals, is_left=False)
+            left_indices = range(n - 1, -1, -1) if direction == "middle-out" else range(n)
+            right_indices = range(n) if direction == "middle-out" else range(n - 1, -1, -1)
+            left_rendered = _render_grouped(list(zip(left_half_vals, left_indices)))
+            right_rendered = _render_grouped(list(zip(right_half_vals, right_indices)))
             return f"{left_rendered}{gap}{right_rendered}"
 
     else:
@@ -863,17 +860,8 @@ def render_cava(values: list[int], colors: dict, cava_state: dict) -> str:
             return sep.join(spans)
 
         else:
-            g_count = max(1, min(4, int(group_mode)))
-            group_palette = [c1, c2, c3, c4][:g_count]
-            group_blocks: list[list[str]] = [[] for _ in range(g_count)]
-
-            for i, v in enumerate(linear_vals):
-                g_idx = min(g_count - 1, int(i * g_count / n))
-                color = group_palette[g_idx]
-                group_blocks[g_idx].append(f'<span foreground="{color}">{CAVA_BLOCKS[v]}</span>')
-
-            group_joiner = gap if group_gap else sep
-            return group_joiner.join(sep.join(g) for g in group_blocks if g)
+            frequency_indices = range(n) if direction == "left-to-right" else range(n - 1, -1, -1)
+            return _render_grouped(list(zip(linear_vals, frequency_indices)))
 
 
 def _write_cava_state_json(state: dict) -> None:
@@ -881,6 +869,8 @@ def _write_cava_state_json(state: dict) -> None:
     direction = str(state.get("cava_direction", ""))
     if not direction:
         direction = "middle-out" if state.get("cava_mirror", True) else "left-to-right"
+    if not bool(state.get("cava_mirror", True)) and direction in ("middle-out", "edges-in"):
+        direction = "left-to-right"
 
     group_mode = str(state.get("cava_group_mode", ""))
     if not group_mode:
@@ -888,11 +878,13 @@ def _write_cava_state_json(state: dict) -> None:
         group_mode = "gradient" if cm == "gradient" else ("1" if cm == "solid" else "3")
 
     cava_state = {
+        "enabled": bool(state.get("cava_enabled", True)),
         "freq_low": int(state.get("cava_freq_low", 20)),
         "freq_high": int(state.get("cava_freq_high", 1000)),
         "bars": int(state.get("cava_bars", 6)),
         "noise_reduction": round(int(state.get("cava_noise", 77)) / 100.0, 2),
         "sensitivity": int(state.get("cava_sensitivity", 100)),
+        "channels": str(state.get("cava_channels", "mono")),
         "direction": direction,
         "mirror": direction in ("middle-out", "edges-in"),
         "group_mode": group_mode,
