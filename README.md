@@ -1,398 +1,61 @@
 # Ascent — a full Hyprland desktop
 
-One palette for **Hyprland, Waybar, kitty, hyprlock, dunst and hyprpaper** — plus a GTK control
-centre for switching themes, wallpapers, Waybar layouts and compositor toggles.
+Hyprland desktop configuration for Waybar, kitty, hyprlock, dunst, hyprpaper, and Hyprlauncher. A shared theme engine applies palettes across the desktop; the GTK Control Center manages themes, wallpapers, and layout options.
 
-![Hypr Control Center — themes](hypr/assets/screenshot-themes.png)
+![Hypr Control Center](hypr/assets/screenshot-themes.png)
 
-## What is in here
+## Install
 
-| Piece | What it does |
-| --- | --- |
-| **Ascent theme engine** | `hypr/scripts/theme-switch` renders one TOML palette into every app. |
-| **6 palettes** | Ascent (default), Ascent Dawn (light), Catppuccin Mocha, Gruvbox Dark, Nord, Rosé Pine. |
-| **Hypr Control Center** | GTK3 cockpit: theme cards, wallpaper thumbnails, Waybar presets, compositor toggles, keybind cheat sheet. |
-| **hyprpaper + picker** | Wallpaper changing with a GUI, directory slideshows, fit modes, random wallpaper. |
-| **Clickable Waybar** | Workspaces activate on left-click, close on right-click — including a Lua IPC shim for Waybar 0.12 on Hyprland 0.55. |
-| **Compact control menu** | One gear opens a native Waybar popup for theme, wallpaper, layouts, notifications, updates, screenshots, lock and power. |
-| **Resource hover** | CPU + RAM in one pill; hover for load, swap, disk and top processes. |
-| **Bass visualizer** | 12-bar cava spectrum in the bar centre, only while audio is playing. |
-| **Themed kitty** | Fonts, padding, opacity, blur, powerline tabs, 16-colour terminal palette. |
-| **Themed launcher** | Hyprlauncher uses a generated Hyprtoolkit palette plus a custom launcher config. |
-| **Themed hyprlock** | Wallpaper background, blurred clock/date, themed password field, user@host footer. |
-| **Themed dunst** | Notifications that follow the same palette (and now actually autostart). |
-| **Dotfiles repo** | Git allowlist that tracks only the Hypr ecosystem. |
-
-![Wallpaper picker](hypr/assets/screenshot-wallpaper.png)
-
-## Quick start
+Clone this repository to `~/.config`, then run the bootstrap script:
 
 ```bash
-# 1. Put this repo at ~/.config (or copy the allow-listed directories)
-git clone <your-repo-url> ~/.config
-
-# 2. Install fonts, local extras and render the theme
+git clone <repo-url> ~/.config
 ~/.config/hypr/scripts/bootstrap
-
-# 3. Open the cockpit
 ~/.config/hypr/scripts/hypr-control-center
 ```
 
-`bootstrap` is safe to re-run. It installs the Nerd Fonts, checks dependencies, installs
-`hyprpaper`/`hyprpicker` into `~/.local/bin` when it can (no sudo), copies the default wallpaper,
-renders every theme file, and starts Waybar / dunst / hyprpaper if they are not running.
+Requires Hyprland 0.55+ with the Lua config provider, Python 3.11+ with PyGObject, Nerd Fonts, and the desktop tools used by the configuration: Waybar, kitty, hyprlock, hypridle, hyprlauncher, hyprshutdown, hyprsunset, hyprpolkitagent, dunst, grim, slurp, wl-clipboard, cliphist, brightnessctl, playerctl, btop, cava, ImageMagick, hyprpaper, and hyprpicker. Bootstrap checks dependencies and installs local extras when possible.
 
-### Dependencies
-
-Hyprland 0.55+ with the Lua config provider, plus:
-
-`waybar` · `kitty` · `hyprlock` · `hypridle` · `hyprlauncher` · `hyprshutdown` · `hyprsunset` ·
-`hyprpolkitagent` · `dunst` · `grim` · `slurp` · `wl-clipboard` · `cliphist` · `brightnessctl` ·
-`playerctl` · `btop` · `cava` · ImageMagick · Python 3.11+ with PyGObject (GTK 3) · `hyprpaper` ·
-`hyprpicker` · JetBrainsMono Nerd Font · Symbols Nerd Font.
-
-On Debian:
+On Debian, install the system packages with:
 
 ```bash
-sudo apt install hyprland waybar kitty hyprlock hypridle dunst hyprlauncher hyprshutdown \
-  hyprsunset hyprpolkitagent grim slurp wl-clipboard cliphist brightnessctl playerctl \
-  imagemagick python3-gi hyprpaper hyprpicker cava
+sudo apt install hyprland waybar kitty hyprlock hypridle hyprlauncher hyprshutdown \
+  hyprsunset hyprpolkitagent dunst grim slurp wl-clipboard cliphist brightnessctl \
+  playerctl btop cava imagemagick python3-gi hyprpaper hyprpicker
 ```
 
-`wttrbar` is bundled in `waybar/wttrbar`, so the weather module works without a network install.
-
-## Themes
+## Commands
 
 ```bash
-theme-switch list              # list palettes
-theme-switch set nord          # apply Nord everywhere
-theme-switch next              # cycle (also SUPER+ALT+T)
-theme-switch prev
-theme-switch apply             # re-render files from the current state
-theme-switch option blur on    # persist a look-and-feel toggle
-theme-switch option rounding 12
-theme-switch option animations off
-```
+theme-switch list
+theme-switch set nord
+theme-switch next
+theme-switch apply
+theme-switch option blur on
 
-The palette lives in `hypr/themes/<slug>.toml`:
-
-```toml
-name = "My Theme"
-description = "What it feels like."
-variant = "dark"
-accent_name = "Cyan"
-
-[colors]
-bg = "#101418"
-surface = "#182028"
-fg = "#d8e2ea"
-accent = "#4fd1c5"
-# … see an existing theme for the full colour list
-
-[terminal]
-"0" = "#101418"
-# … 16 terminal colours
-```
-
-Then `theme-switch set my-theme`. A theme change updates:
-
-- `hypr/theme.lua` — borders, shadow, blur, gaps, rounding, animations
-- `waybar/colors.css` — imported by `waybar/style.css`
-- `kitty/theme.conf` — included by `kitty/kitty.conf`
-- `hypr/hyprlock.conf` — generated from `hypr/templates/hyprlock.conf.in`
-- `hypr/hyprpaper.conf` — generated from `hypr/templates/hyprpaper.conf.in`
-- `dunst/dunstrc` — generated from `hypr/templates/dunstrc.in`
-- `hypr/hyprtoolkit.conf` — the palette used by hyprlauncher and other Hyprtoolkit apps
-
-Waybar reloads with `SIGUSR2`, kitty with `SIGUSR1`, dunst with `dunstctl reload`, and Hyprland with
-`hyprctl reload`. The Control Center polls the state file, so it updates live if you change a theme
-from the bar or CLI.
-
-## Wallpaper
-
-```bash
-wallpaper-set ~/Pictures/Wallpapers/foo.png
+wallpaper-set ~/Pictures/Wallpapers/image.png
 wallpaper-set --random
-wallpaper-set --fit contain ~/Pictures/Wallpapers/foo.png
-wallpaper-set --directory ~/Pictures/Wallpapers   # 5-minute random slideshow
-wallpaper-set --list
-```
+wallpaper-set --directory ~/Pictures/Wallpapers
 
-The Control Center can add images (multi-select), open the folder, pick a random image, start a
-slideshow and choose `cover` / `contain` / `fill` / `tile`. Images you add through the GUI are copied
-to `~/Pictures/Wallpapers`.
-
-The lock screen automatically uses the current wallpaper too.
-
-> **hyprpaper note:** this repo was built against hyprpaper 0.8.4, whose IPC has a segfault when a
-> config with a `wallpaper` block receives a runtime wallpaper change. `wallpaper-set` therefore
-> writes the generated config and restarts hyprpaper instead of using IPC. JPEGs are converted to a
-> cached 8-bit PNG first, which is also friendlier to that build.
-
-## Waybar
-
-- **Workspaces:** left-click **activates** a workspace, right-click **closes** it. `move-to-monitor`
-  is on, so clicking a workspace opens it on the current monitor.
-- **Control gear:** opens a native Waybar popup menu — next theme, random wallpaper, wallpaper picker,
-  Waybar layouts, restart Waybar, notifications, updates, region screenshot, colour pick, lock and
-  the power menu. Scroll over the gear to cycle themes; right-click opens the Control Center.
-- **Resources:** one compact `CPU% · RAM%` pill. Hover for load average, swap, disk and the top
-  processes; click opens `btop`.
-- **Visualizer:** a 12-bar, bass-weighted cava spectrum in the centre. It uses theme colours, shows
-  the current track on hover, and disappears after ~1.3 seconds of silence, so it never reserves
-  space or clutters the bar.
-- **Power button:** opens a themed confirmation dialog first. **Cancel** is the default, `Esc` cancels, and it auto-cancels after 15 seconds. Only **Open power menu** starts `hyprshutdown`.
-- **Stay awake:** the monitor-shaped idle inhibitor stays as a one-click toggle; it is a compositor
-  protocol toggle, not a menu action.
-- **Updates:** the old count pill is gone. Use the control gear → **Check for updates…**.
-
-Switch layouts and positions:
-
-```bash
-waybar-mode --layout default --position top
 waybar-mode --layout compact --position bottom
-waybar-mode --layout minimal --position top
-waybar-mode --layout focus --position top
-waybar-mode --position left      # slim vertical bar
 waybar-mode --list
-```
 
-Presets live in `waybar/presets/`; shared module definitions are in `_modules.json`. When you change
-a preset, the engine writes the merged result to `waybar/config.jsonc` and restarts Waybar.
-
-![Compact Waybar with the cava visualizer](hypr/assets/screenshot-bar.png)
-
-![Native control menu](hypr/assets/screenshot-control-menu.png)
-
-![CPU/RAM hover tooltip](hypr/assets/screenshot-resources.png)
-
-### Music visualizer
-
-[cava](https://github.com/karlstav/cava) is installed into `~/.local/bin` by `bootstrap` (or use
-`sudo apt install cava`). It reads the default PipeWire sink monitor (`@DEFAULT_MONITOR@`), so it
-reacts to YouTube Music, local players and anything else coming out of the default output.
-
-- 12 bars, 24 FPS, with the first four bars weighted for bass
-- Ember → gold → frost gradient pulled from the active theme
-- `hide-empty-text` removes it after ~1.3 s of silence and brings it back when audio resumes
-- About 4% of one CPU core while visible; the `cava-waybar` reader is under 1%
-
-If it stays flat, check `pactl get-default-sink` and the `source` line in `waybar/cava.conf`.
-Restart Waybar after changing the cava config.
-
-### Hyprland 0.55 IPC shim
-
-Debian's Waybar 0.12 sends legacy commands such as `dispatch workspace 2` to Hyprland. Hyprland
-0.55 uses the Lua config provider and parses command-socket dispatches as Lua, so the legacy form
-fails — that is why workspace buttons can look dead even with `on-click: activate`.
-
-`waybar/scripts/start-waybar` starts a tiny Unix-socket proxy (`waybar-ipc-proxy.py`) and launches
-Waybar with a proxy `HYPRLAND_INSTANCE_SIGNATURE`. The proxy rewrites the legacy workspace,
-special-workspace, `exec` and `exit` dispatches and forwards everything else (JSON queries, events)
-to the real session. The bar's event socket is a symlink to the real `.socket2.sock`, so workspace
-updates still arrive.
-
-```bash
-# manual start / restart (autostart and waybar-mode use this too)
-~/.config/waybar/scripts/start-waybar
-tail -f ~/.cache/waybar-ipc-proxy.log
-```
-
-If you later upgrade to Waybar 0.15+, it detects the Lua protocol itself and the shim can be removed;
-the rest of the config works with both versions. If the proxy cannot start it falls back to the real
-socket (the bar still works, only legacy clicks fail).
-
-![Waybar layouts](hypr/assets/screenshot-waybar.png)
-
-### Power button safety
-
-A stray click on the far-right power button no longer opens the shutdown menu directly. A small
-themed dialog asks first; Cancel is default, Escape cancels, and the dialog auto-cancels after 15
-seconds. The lock is single-instance, so double-clicking the Waybar button cannot stack dialogs.
-
-![Power confirmation](hypr/assets/screenshot-power-confirm.png)
-
-## Hypr Control Center
-
-```bash
 hypr-control-center --tab theme
-hypr-control-center --tab wallpaper
-hypr-control-center --tab bar
-hypr-control-center --tab desktop
-hypr-control-center --tab keys
 ```
 
-It is a single GTK application: launching it again with another `--tab` switches the existing
-window instead of opening duplicates. The window floats, centres itself through Hyprland, and is
-matched by a window rule on the `land.hypr.ControlCenter` class.
+The Control Center also has wallpaper, bar, desktop, and keybind tabs. `SUPER + SHIFT + T` opens it; `SUPER + ALT + T` changes the theme.
 
-The **Desktop** tab persists `blur`, `animations`, `shadow`, `rounding`, `gaps_in`, `gaps_out` and
-`border_size` in `hypr/theme-state.json`, then re-renders `hypr/theme.lua` and reloads Hyprland.
-It also has quick actions for lock, region screenshot, colour picking, the Hyprsunset dimmer and
-notification pause.
+## Customize
 
-![Desktop panel](hypr/assets/screenshot-desktop.png)
+- Themes: `hypr/themes/*.toml`
+- Templates: `hypr/templates/`
+- Waybar layouts: `waybar/presets/`
+- Wallpapers: `~/Pictures/Wallpapers/`
 
-## Keybinds
+Run `theme-switch apply` to regenerate the app palettes from the current theme. Generated configuration files are tracked so a fresh clone works immediately.
 
-| Keys | Action |
-| --- | --- |
-| `SUPER + Return` | kitty |
-| `SUPER + E` | Dolphin |
-| `SUPER + R` | Hyprlauncher |
-| `SUPER + L` | Lock screen |
-| `SUPER + SHIFT + T` | Control Center — themes |
-| `SUPER + SHIFT + W` | Control Center — wallpaper |
-| `SUPER + ALT + T` | Next colour theme |
-| `SUPER + ALT + B` | Control Center — Waybar layouts |
-| `SUPER + SHIFT + P` | Pick a colour to clipboard (hyprpicker) |
-| `SUPER + SHIFT + S` | Region screenshot → clipboard |
-| `Print` | Region screenshot → swappy |
-| `SUPER + Print` | Region screenshot → clipboard |
-| `SUPER + SHIFT + V` | Clipboard history (cliphist + hyprlauncher) |
-| `SUPER + SHIFT + N` | Pause/resume notifications |
-| `SUPER + SHIFT + R` | Reload Hyprland |
-| `SUPER + 1…0` | Switch workspace |
-| `SUPER + SHIFT + 1…0` | Move window to workspace |
-| `SUPER + S` | Scratchpad workspace |
-| `SUPER + F` / `SUPER + M` | Fullscreen / maximise |
-| `SUPER + V` | Toggle floating |
-| `SUPER + drag` / `SUPER + right-drag` | Move / resize a window |
-| Media & brightness keys | Volume, mic mute, brightness, Hyprsunset, playerctl |
+## Repository
 
-## Themed terminal
+This repository lives at `~/.config`. `.gitignore` allows only `hypr/`, `waybar/`, `kitty/`, `dunst/`, `README.md`, and `.gitignore`; other desktop and application data stays out of Git. Check `git status` before committing.
 
-`kitty/kitty.conf` is intentionally small and readable: JetBrainsMono Nerd Font, 95% opacity with
-background blur, powerline tabs, and a 10k-line scrollback. Colours are imported last from
-`kitty/theme.conf`.
-
-![Themed kitty](hypr/assets/screenshot-kitty.png)
-
-## Launcher & notifications
-
-**Hyprlauncher** is themed through Hyprtoolkit, not CSS. `theme-switch` generates
-`hypr/hyprtoolkit.conf` with the same Ascent/Nord/etc. palette, and `hypr/hyprlauncher.conf` controls
-the launcher itself: focus grab, icon finder, `kitty` for terminal entries and a 480×320 window.
-Installed hyprlauncher 0.1.6 doesn't support `show_apps_on_open`, so type to search or pass
-`--options "…"` for a quick picker.
-
-![Themed Hyprlauncher](hypr/assets/screenshot-hyprlauncher.png)
-
-**Dunst** is fully themed: `dunst/dunstrc` is generated from the active palette and `dunstctl reload`
-runs on every theme switch. It is autostarted by Hyprland, and the config is tracked in this repo.
-
-![Themed dunst notification](hypr/assets/screenshot-dunst.png)
-
-## Repository layout
-
-```text
-~/.config/
-├── .gitignore                 # allowlist: only the Hypr ecosystem
-├── README.md
-├── hypr/
-│   ├── hyprland.lua           # main config, keybinds, autostart, rules
-│   ├── hypridle.conf
-│   ├── hyprlock.conf          # generated
-│   ├── hyprpaper.conf         # generated
-│   ├── hyprtoolkit.conf       # generated — launcher/hyprshutdown palette
-│   ├── hyprlauncher.conf      # launcher behaviour/window
-│   ├── theme.lua              # generated
-│   ├── theme-state.json       # current theme/wallpaper/options
-│   ├── themes/*.toml
-│   ├── templates/*.in
-│   ├── scripts/
-│   │   ├── theme_engine.py
-│   │   ├── theme-switch
-│   │   ├── wallpaper-set
-│   │   ├── waybar-mode
-│   │   ├── hypr-control-center
-│   │   └── bootstrap
-│   └── assets/                # screenshots + default wallpaper
-├── waybar/
-│   ├── config.jsonc           # generated from presets
-│   ├── colors.css             # generated
-│   ├── style.css
-│   ├── control-menu.xml       # native GtkMenu for the control gear
-│   ├── cava.conf              # raw spectrum source
-│   ├── presets/{_modules,default,compact,minimal,focus}.json
-│   ├── scripts/
-│   │   ├── start-waybar
-│   │   ├── waybar-ipc-proxy.py
-│   │   ├── power-menu
-│   │   ├── cava-waybar
-│   │   ├── resources
-│   │   ├── restart-waybar
-│   │   ├── open-updates
-│   │   └── hyprsunset-slider.py
-│   └── wttrbar
-├── kitty/
-│   ├── kitty.conf
-│   └── theme.conf             # generated
-└── dunst/
-    └── dunstrc                # generated
-```
-
-## Git policy
-
-The repo lives at `~/.config`, but `.gitignore` ignores **everything** and then un-ignores only:
-
-```
-hypr/  waybar/  kitty/  dunst/  README.md  .gitignore
-```
-
-That means KDE, Code, Brave, gh tokens, session data, caches and every other app config stay out of
-Git. Run `git status` to see the clean allowlist in action.
-
-Generated files are tracked on purpose so a clone is immediately usable; changing a theme will show
-a tidy diff of the generated palette files. Commit after a theme change if you want to pin it.
-
-## Troubleshooting
-
-**Missing icons / boxes.** Install the Nerd Fonts (`bootstrap` does this) and run `fc-cache -f`.
-Waybar and kitty both ask for `JetBrainsMono Nerd Font` first, then `Symbols Nerd Font`.
-
-**Visualizer is flat or missing.** Run `pactl get-default-sink`; the monitor is
-`<sink>.monitor`. `waybar/cava.conf` uses `source = @DEFAULT_MONITOR@`. Check
-`~/.cache/waybar.log` for cava errors, then restart Waybar. The spectrum only appears while audio is
-actually playing.
-
-**Control menu does not open.** `waybar/control-menu.xml` must exist and be valid XML. Check
-`~/.cache/waybar.log` for `Error while creating the menu`; the gear uses Waybar's native
-`menu`/`menu-file` support, so it needs Waybar 0.12+ (it is in this repo).
-
-**Hyprlauncher config errors.** Installed hyprlauncher 0.1.6 does not know
-`general:show_apps_on_open`; this repo's `hyprlauncher.conf` only uses supported keys. Check the
-daemon log for `Error in config` after changing it.
-
-**Wallpaper does not change.** Check `pgrep -x hyprpaper` and
-`hyprctl hyprpaper listactive`. Run `wallpaper-set ~/Pictures/Wallpapers/hyprland-0.png` to force a
-known-good PNG. If hyprpaper is missing, `bootstrap` installs it locally or use
-`sudo apt install hyprpaper`.
-
-**Lock screen client crashed.** `misc:allow_session_lock_restore` is enabled in
-`hypr/hyprland.lua`, so you can start hyprlock again with `SUPER + L` (or
-`hyprctl dispatch 'hl.dsp.exec_cmd("hyprlock")'`).
-
-**Waybar CSS import.** `style.css` starts with `@import url("colors.css");`. If you copy just
-`style.css` somewhere else, copy `colors.css` too or re-run `theme-switch apply`.
-
-**Waybar disappeared.** The launcher now writes Waybar's output to `~/.cache/waybar.log`. Restart it
-with `~/.config/waybar/scripts/start-waybar` (this keeps the Lua IPC shim active). The power button
-now asks for confirmation before opening hyprshutdown.
-
-**Workspace buttons do nothing.** Make sure Waybar was started through
-`waybar/scripts/start-waybar`, not the bare `waybar` binary. Check
-`~/.cache/waybar-ipc-proxy.log`; a line like
-`rewrite: 'dispatch workspace 2' -> 'dispatch hl.dsp.focus({ workspace = "2" })'` means the shim is
-active. `waybar-mode` and the Hyprland autostart both use the wrapper automatically.
-
-**Hyprland version.** The config uses Hyprland's Lua provider (`hyprland.lua` + `require`). On older
-versions convert back to `hyprland.conf` or update Hyprland.
-
-## Credits
-
-Built on [Hyprland](https://hypr.land), [Waybar](https://github.com/Alexays/Waybar),
-[kitty](https://sw.kovidgoyal.net/kitty/), [hyprpaper](https://github.com/hyprwm/hyprpaper),
-[hyprlock](https://github.com/hyprwm/hyprlock), [dunst](https://dunst-project.org/) and
-[Nerd Fonts](https://www.nerdfonts.com/). Palettes inspired by Catppuccin, Gruvbox, Nord and
-Rosé Pine; **Ascent** is the original ember/sage/gold palette from this desktop.
+Waybar logs are in `~/.cache/waybar.log`; the IPC shim log is `~/.cache/waybar-ipc-proxy.log`. Start Waybar through `~/.config/waybar/scripts/start-waybar` so workspace actions use the Hyprland IPC shim.
