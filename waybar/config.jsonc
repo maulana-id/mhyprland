@@ -248,9 +248,7 @@
     "bluetooth",
     "network"
   ],
-  "modules-center": [
-    "custom/cava"
-  ],
+  "modules-center": [],
   "modules-right": [
     "custom/hyprsunset",
     "backlight",
