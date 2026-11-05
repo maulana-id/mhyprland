@@ -6,7 +6,7 @@ Supports:
   Display order: barN…bar1 | bar1…barN
 - Color modes: gradient (lerp between two theme colors), theme (3 groups),
   solid (all bars in accent color).
-- All settings configurable via /home/maul/.config/waybar/cava-state.json.
+- All settings configurable via ~/.config/waybar/cava-state.json.
 """
 
 from __future__ import annotations

@@ -23,7 +23,7 @@ DUNST = CONFIG / "dunst"
 THEMES_DIR = HYPR / "themes"
 TEMPLATES_DIR = HYPR / "templates"
 SCRIPTS_DIR = HYPR / "scripts"
-STATE_PATH = HYPR / "theme-state.json"
+STATE_PATH = HYPR / "theme-state.local.json"
 WALLPAPER_DIR = HOME / "Pictures" / "Wallpapers"
 CACHE_DIR = Path(os.environ.get("XDG_CACHE_HOME", HOME / ".cache")) / "hypr-theme"
 
@@ -339,15 +339,14 @@ def _template(name: str) -> Template:
 def _template_values(theme: dict, state: dict) -> dict[str, str]:
     c = theme["colors"]
     raw_wallpaper = state.get("wallpaper_render") or state.get("wallpaper")
-    wallpaper = str(expand_path(raw_wallpaper)) if raw_wallpaper else str(WALLPAPER_DIR / "hyprland-0.png")
-    if not Path(wallpaper).exists():
-        wallpaper = str(WALLPAPER_DIR / "hyprland-0.png")
-    if not Path(wallpaper).exists():
-        wallpaper = "screenshot"
+    wallpaper_path = expand_path(raw_wallpaper) if raw_wallpaper else WALLPAPER_DIR / "hyprland-0.png"
+    if not wallpaper_path.exists():
+        wallpaper_path = WALLPAPER_DIR / "hyprland-0.png"
+    wallpaper = portable_path(wallpaper_path) if wallpaper_path.exists() else "screenshot"
     fit = state.get("fit_mode", "cover")
     if fit not in FIT_MODES:
         fit = "cover"
-    is_dir = Path(wallpaper).is_dir()
+    is_dir = wallpaper_path.is_dir()
     values = {
         "theme_slug": theme["slug"],
         "theme_name": theme["name"],

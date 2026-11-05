@@ -54,6 +54,8 @@ The Control Center also has wallpaper, bar, desktop, and keybind tabs. `SUPER + 
 
 Run `theme-switch apply` to regenerate the app palettes from the current theme. Generated configuration files are tracked so a fresh clone works immediately.
 
+Machine-local customization state lives in `hypr/theme-state.local.json` and `waybar/cava-state.json`; both are gitignored. Paths are written with `~/` so generated configs stay portable. Delete the local state to fall back to the defaults in [theme_engine.py](hypr/scripts/theme_engine.py).
+
 ## Repository
 
 This repository lives at `~/.config`. `.gitignore` allows only `hypr/`, `waybar/`, `kitty/`, `dunst/`, `README.md`, and `.gitignore`; other desktop and application data stays out of Git. Check `git status` before committing.

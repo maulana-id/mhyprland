@@ -93,7 +93,7 @@ say "Rendering theme files"
 # If the state points at a missing image (new machine, moved Pictures), fall back
 # to the bundled default so hyprpaper has something valid to load.
 wallpaper="$(
-    python3 - "$CONFIG/hypr/theme-state.json" <<'PY'
+    python3 - "$CONFIG/hypr/theme-state.local.json" <<'PY'
 import json, os, sys
 try:
     state = json.load(open(sys.argv[1]))

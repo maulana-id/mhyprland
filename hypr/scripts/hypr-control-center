@@ -1305,7 +1305,7 @@ class ControlCenter(Gtk.Application):
         scroll, content = self.page()
         content.pack_start(section_title(
             "Desktop look & feel",
-            "Toggles and geometry are persisted in hypr/theme-state.json and re-rendered into hypr/theme.lua.",
+            "Toggles and geometry are persisted in hypr/theme-state.local.json and re-rendered into hypr/theme.lua.",
         ), False, False, 0)
 
         look = vbox(4)

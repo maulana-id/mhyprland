@@ -13,3 +13,7 @@
 .dotfiles-backup/
 **/__pycache__/
 *.py[cod]
+
+# Machine-local customization state (never commit these)
+hypr/theme-state.local.json
+waybar/cava-state.json
