@@ -21,6 +21,7 @@ import signal
 import socket
 import sys
 import threading
+import time
 from pathlib import Path
 
 
@@ -78,9 +79,33 @@ class WaybarIPCProxy:
         self.proxy_dir = runtime / proxy_sig
         self.real_socket = self.real_dir / ".socket.sock"
         self.proxy_socket = self.proxy_dir / ".socket.sock"
-        self.event_socket = self.proxy_dir / ".socket2.sock"
-        self.real_event = self.real_dir / ".socket2.sock"
         self.running = True
+
+    def _sync_sockets(self) -> None:
+        """Mirror Hypr ecosystem sockets (hyprpaper/hyprsunset/events) into the proxy dir."""
+        try:
+            entries = list(self.real_dir.iterdir())
+        except OSError:
+            return
+        for path in entries:
+            if not path.name.endswith(".sock") or path.name == ".socket.sock":
+                continue
+            link = self.proxy_dir / path.name
+            try:
+                if link.is_symlink():
+                    if link.resolve() == path.resolve():
+                        continue
+                    link.unlink()
+                elif link.exists():
+                    continue
+                link.symlink_to(path)
+            except OSError:
+                pass
+
+    def _sync_loop(self) -> None:
+        while self.running:
+            self._sync_sockets()
+            time.sleep(2.0)
 
     def prepare(self) -> None:
         self.proxy_dir.mkdir(parents=True, exist_ok=True)
@@ -88,9 +113,7 @@ class WaybarIPCProxy:
         (self.proxy_dir / "real-sig").write_text(self.real_dir.name, encoding="utf-8")
         if self.proxy_socket.exists() or self.proxy_socket.is_symlink():
             self.proxy_socket.unlink()
-        if self.event_socket.exists() or self.event_socket.is_symlink():
-            self.event_socket.unlink()
-        self.event_socket.symlink_to(self.real_event)
+        self._sync_sockets()
 
     def forward(self, request: str) -> bytes:
         buffer = bytearray()
@@ -139,6 +162,7 @@ class WaybarIPCProxy:
         server.listen(64)
         (self.proxy_dir / "proxy.pid").write_text(str(os.getpid()), encoding="utf-8")
         log(f"Waybar IPC proxy ready: {self.proxy_socket} -> {self.real_socket}")
+        threading.Thread(target=self._sync_loop, daemon=True).start()
 
         while self.running:
             try:

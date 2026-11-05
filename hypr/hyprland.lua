@@ -71,12 +71,11 @@ hl.on("hyprland.start", function()
     hl.exec_cmd("systemctl --user start hyprland-session.target")
 
     -- 3. Start your apps
-    -- hl.exec_cmd("systemctl --user start hyprpolkitagent")
-    hl.exec_cmd("/usr/libexec/hyprpolkitagent &")
+    -- hypridle and hyprpolkitagent are pulled in by hyprland-session.target above.
+    -- Start only the service-managed copies so they are not duplicated.
     hl.exec_cmd("$HOME/.config/waybar/scripts/start-waybar")
     hl.exec_cmd("dunst")
-    hl.exec_cmd("hypridle")
-    hl.exec_cmd("hyprsunset")
+    hl.exec_cmd("systemctl --user start hyprsunset.service")
     -- hyprpaper is installed to ~/.local/bin when the system package is unavailable
     hl.exec_cmd("sh -c 'command -v hyprpaper >/dev/null 2>&1 && exec hyprpaper; [ -x \"$HOME/.local/bin/hyprpaper\" ] && exec \"$HOME/.local/bin/hyprpaper\"'")
     hl.exec_cmd("wl-paste --type text --watch cliphist store")

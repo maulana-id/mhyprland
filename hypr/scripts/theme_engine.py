@@ -398,7 +398,6 @@ def render_hyprlock(theme: dict, state: dict) -> str:
     values = _template_values(theme, state)
     for key, value in theme["colors"].items():
         values[key] = rgba(value)
-    values["muted_hex"] = theme["colors"]["muted"]
     return _template("hyprlock.conf.in").safe_substitute(values)
 
 
