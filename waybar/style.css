@@ -59,6 +59,7 @@ button {
 #pulseaudio,
 #custom-resources,
 #custom-weather,
+#custom-notifications,
 #clock,
 #battery,
 #custom-cava,
@@ -186,6 +187,13 @@ button {
 }
 
 #custom-hyprsunset {
+  color: @gold;
+}
+
+#custom-notifications {
+  color: @muted;
+}
+#custom-notifications.unread {
   color: @gold;
 }
 

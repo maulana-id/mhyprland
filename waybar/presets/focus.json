@@ -18,6 +18,7 @@
   ],
   "modules-right": [
     "custom/resources",
+    "custom/notifications",
     "clock",
     "battery"
   ]

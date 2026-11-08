@@ -71,11 +71,12 @@ hl.on("hyprland.start", function()
     hl.exec_cmd("systemctl --user start hyprland-session.target")
 
     -- 3. Start your apps
-    -- hypridle and hyprpolkitagent are pulled in by hyprland-session.target above.
-    -- Start only the service-managed copies so they are not duplicated.
+    -- hl.exec_cmd("systemctl --user start hyprpolkitagent")
+    hl.exec_cmd("/usr/libexec/hyprpolkitagent &")
     hl.exec_cmd("$HOME/.config/waybar/scripts/start-waybar")
     hl.exec_cmd("dunst")
-    hl.exec_cmd("systemctl --user start hyprsunset.service")
+    hl.exec_cmd("hypridle")
+	hl.exec_cmd("systemctl --user start hyprsunset.service")
     -- hyprpaper is installed to ~/.local/bin when the system package is unavailable
     hl.exec_cmd("sh -c 'command -v hyprpaper >/dev/null 2>&1 && exec hyprpaper; [ -x \"$HOME/.local/bin/hyprpaper\" ] && exec \"$HOME/.local/bin/hyprpaper\"'")
     hl.exec_cmd("wl-paste --type text --watch cliphist store")
@@ -543,6 +544,22 @@ hl.window_rule({
 	match = { class = "^(hypr-control-center|land\\.hypr\\.ControlCenter)$" },
 	float = true,
 	size = "1000 700",
+})
+
+hl.window_rule({
+	name = "float-notification-history",
+	match = { class = "^notification-history$", title = "^Notification history$" },
+	float = true,
+	size = "420 520",
+	move = "monitor_w/2-window_w/2 44",
+})
+
+hl.window_rule({
+	name = "float-hyprsunset-slider",
+	match = { class = "^hyprsunset-slider$", title = "^Light & color$" },
+	float = true,
+	size = "350 377",
+	move = "monitor_w/2-window_w/2 44",
 })
 
 hl.window_rule({

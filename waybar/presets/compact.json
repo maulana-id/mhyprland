@@ -20,6 +20,7 @@
   "modules-right": [
     "pulseaudio",
     "network",
+    "custom/notifications",
     "clock",
     "battery",
     "custom/power"

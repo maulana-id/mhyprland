@@ -64,4 +64,4 @@
     background = "${surface}"
     foreground = "${fg}"
     frame_color = "${accent}"
-    timeout = 0
+    timeout = 10

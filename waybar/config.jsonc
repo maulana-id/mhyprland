@@ -33,8 +33,19 @@
   },
   "custom/hyprsunset": {
     "format": "\udb80\udf35",
-    "tooltip-format": "Hyprsunset Dimmer\nLeft: open sliders \u00b7 Scroll: quick adjust",
-    "on-click": "python3 $HOME/.config/waybar/scripts/hyprsunset-slider.py",
+    "tooltip-format": "Hyprsunset Dimmer\nLeft: quick menu \u00b7 Right: fine-tune sliders",
+    "menu": "on-click",
+    "menu-file": "$HOME/.config/waybar/hyprsunset-menu.xml",
+    "menu-actions": {
+      "temperature_warm": "hyprctl hyprsunset temperature 3000",
+      "temperature_balanced": "hyprctl hyprsunset temperature 4500",
+      "temperature_daylight": "hyprctl hyprsunset temperature 6500",
+      "gamma_down": "hyprctl hyprsunset gamma -5",
+      "gamma_up": "hyprctl hyprsunset gamma +5",
+      "sliders": "python3 $HOME/.config/waybar/scripts/hyprsunset-slider.py",
+      "reset": "hyprctl hyprsunset gamma 100 && hyprctl hyprsunset temperature 6500"
+    },
+    "on-click-right": "python3 $HOME/.config/waybar/scripts/hyprsunset-slider.py",
     "on-scroll-up": "hyprctl hyprsunset gamma +5",
     "on-scroll-down": "hyprctl hyprsunset gamma -5"
   },
@@ -42,6 +53,21 @@
     "format": "\u23fb",
     "tooltip-format": "Power menu\nAsks for confirmation first",
     "on-click": "$HOME/.config/waybar/scripts/power-menu"
+  },
+  "custom/notifications": {
+    "exec": "python3 $HOME/.config/waybar/scripts/notification-history.py --status",
+    "interval": 2,
+    "return-type": "json",
+    "format": "{}",
+    "tooltip-format": "Notification history\nLeft: quick menu \u00b7 Right: full history",
+    "menu": "on-click",
+    "menu-file": "$HOME/.config/waybar/notification-menu.xml",
+    "menu-actions": {
+      "history": "python3 $HOME/.config/waybar/scripts/notification-history.py",
+      "clear_history": "dunstctl history-clear",
+      "pause_notifications": "dunstctl set-paused toggle"
+    },
+    "on-click-right": "python3 $HOME/.config/waybar/scripts/notification-history.py"
   },
   "custom/weather": {
     "format": "{}\u00b0",
@@ -248,11 +274,14 @@
     "bluetooth",
     "network"
   ],
-  "modules-center": [],
+  "modules-center": [
+    "custom/cava"
+  ],
   "modules-right": [
     "custom/hyprsunset",
     "backlight",
     "pulseaudio",
+    "custom/notifications",
     "custom/resources",
     "custom/weather",
     "clock",

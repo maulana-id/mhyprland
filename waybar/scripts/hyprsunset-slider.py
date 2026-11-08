@@ -9,7 +9,7 @@ class HyprsunsetControl(Gtk.Window):
         super().__init__(title="Light & color")
         self.set_name("hyprsunset-popup")
         self.set_border_width(18)
-        self.set_default_size(350, 350)
+        self.set_default_size(350, 377)
         self.set_position(Gtk.WindowPosition.MOUSE)
         self.set_decorated(False)
         self.set_resizable(False)
@@ -191,5 +191,8 @@ class HyprsunsetControl(Gtk.Window):
         self.schedule_update("temperature", ["hyprctl", "hyprsunset", "temperature", str(val)])
 
 if __name__ == "__main__":
+    GLib.set_prgname("hyprsunset-slider")
+    GLib.set_application_name("Hyprsunset Slider")
+    Gdk.set_program_class("hyprsunset-slider")
     win = HyprsunsetControl()
     Gtk.main()

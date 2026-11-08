@@ -26,6 +26,7 @@
     "custom/hyprsunset",
     "backlight",
     "pulseaudio",
+    "custom/notifications",
     "custom/resources",
     "custom/weather",
     "clock",

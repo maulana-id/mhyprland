@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <object class="GtkMenu" id="menu">
+    <child>
+      <object class="GtkMenuItem" id="header">
+        <property name="label">󰌵  Hyprsunset</property>
+        <property name="sensitive">False</property>
+      </object>
+    </child>
+    <child><object class="GtkSeparatorMenuItem" id="temperature_separator"/></child>
+    <child><object class="GtkMenuItem" id="temperature_warm"><property name="label">󰖔  Warm · 3000 K</property></object></child>
+    <child><object class="GtkMenuItem" id="temperature_balanced"><property name="label">󰔏  Balanced · 4500 K</property></object></child>
+    <child><object class="GtkMenuItem" id="temperature_daylight"><property name="label">󰖙  Daylight · 6500 K</property></object></child>
+    <child><object class="GtkSeparatorMenuItem" id="gamma_separator"/></child>
+    <child><object class="GtkMenuItem" id="gamma_down"><property name="label">󰃜  Dim gamma −5%</property></object></child>
+    <child><object class="GtkMenuItem" id="gamma_up"><property name="label">󰃠  Raise gamma +5%</property></object></child>
+    <child><object class="GtkMenuItem" id="reset"><property name="label">󰑐  Reset to neutral</property></object></child>
+    <child><object class="GtkSeparatorMenuItem" id="sliders_separator"/></child>
+    <child><object class="GtkMenuItem" id="sliders"><property name="label">󰒓  Fine-tune sliders…</property></object></child>
+  </object>
+</interface>
