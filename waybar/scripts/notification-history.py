@@ -13,6 +13,7 @@ from gi.repository import Gdk, GLib, Gtk
 
 READ_ICON = "󰂚"
 UNREAD_ICON = "󱅫"
+PAUSED_ICON = "󱏧"
 STATE_ROOT = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state"))
 STATE_FILE = STATE_ROOT / "waybar" / "notification-history.json"
 
@@ -84,10 +85,11 @@ def status():
         else:
             unread_ids = ids - {str(item) for item in state.get("seen_ids", [])}
         unread_count = len(unread_ids)
+        paused = run_dunst("is-paused") == "true"
         print(json.dumps({
-            "text": UNREAD_ICON if unread_count else READ_ICON,
-            "class": "unread" if unread_count else "read",
-            "tooltip": f"Notification history · {unread_count} unread",
+            "text": PAUSED_ICON if paused else UNREAD_ICON if unread_count else READ_ICON,
+            "class": ["paused" if paused else "active", "unread" if unread_count else "read"],
+            "tooltip": f"Notifications {'paused' if paused else 'active'} · {unread_count} unread",
         }, ensure_ascii=False))
     except (OSError, ValueError, subprocess.SubprocessError, KeyError) as error:
         print(json.dumps({

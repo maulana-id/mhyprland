@@ -54,21 +54,6 @@
     "tooltip-format": "Power menu\nAsks for confirmation first",
     "on-click": "$HOME/.config/waybar/scripts/power-menu"
   },
-  "custom/notifications": {
-    "exec": "python3 $HOME/.config/waybar/scripts/notification-history.py --status",
-    "interval": 2,
-    "return-type": "json",
-    "format": "{}",
-    "tooltip-format": "Notification history\nLeft: quick menu \u00b7 Right: full history",
-    "menu": "on-click",
-    "menu-file": "$HOME/.config/waybar/notification-menu.xml",
-    "menu-actions": {
-      "history": "python3 $HOME/.config/waybar/scripts/notification-history.py",
-      "clear_history": "dunstctl history-clear",
-      "pause_notifications": "dunstctl set-paused toggle"
-    },
-    "on-click-right": "python3 $HOME/.config/waybar/scripts/notification-history.py"
-  },
   "custom/weather": {
     "format": "{}\u00b0",
     "tooltip": true,
@@ -238,6 +223,21 @@
     "on-scroll-up": "$HOME/.config/hypr/scripts/theme-switch next",
     "on-scroll-down": "$HOME/.config/hypr/scripts/theme-switch prev"
   },
+  "custom/notifications": {
+    "exec": "python3 $HOME/.config/waybar/scripts/notification-history.py --status",
+    "interval": 2,
+    "return-type": "json",
+    "format": "{}",
+    "tooltip-format": "Notification history\nLeft: quick menu \u00b7 Right: full history",
+    "menu": "on-click",
+    "menu-file": "$HOME/.config/waybar/notification-menu.xml",
+    "menu-actions": {
+      "history": "python3 $HOME/.config/waybar/scripts/notification-history.py",
+      "clear_history": "dunstctl history-clear",
+      "pause_notifications": "dunstctl set-paused toggle"
+    },
+    "on-click-right": "python3 $HOME/.config/waybar/scripts/notification-history.py"
+  },
   "custom/resources": {
     "exec": "$HOME/.config/waybar/scripts/resources",
     "interval": 2,
@@ -274,9 +274,7 @@
     "bluetooth",
     "network"
   ],
-  "modules-center": [
-    "custom/cava"
-  ],
+  "modules-center": [],
   "modules-right": [
     "custom/hyprsunset",
     "backlight",

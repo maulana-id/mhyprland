@@ -196,6 +196,9 @@ button {
 #custom-notifications.unread {
   color: @gold;
 }
+#custom-notifications.paused {
+  color: @red;
+}
 
 #idle_inhibitor.activated {
   background: @accent;
