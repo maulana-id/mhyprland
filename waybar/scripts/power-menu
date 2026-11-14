@@ -2,7 +2,7 @@
 """Themed confirmation gate for the Waybar power button.
 
 One click opens this dialog. The default button is Cancel, Escape cancels, and
-the dialog auto-cancels after 15 seconds. Only the explicit "Open power menu"
+the dialog auto-cancels after 15 seconds. Only the explicit "Open Logout menu"
 button starts hyprshutdown.
 """
 
@@ -57,13 +57,13 @@ def app_css(theme: dict) -> str:
         background-color: {c['bg']};
         color: {c['fg']};
     }}
-    .power-title {{
+    .logout-title {{
         font-family: "JetBrainsMono Nerd Font";
         font-size: 17px;
         font-weight: 800;
         color: {c['fg']};
     }}
-    .power-sub {{
+    .logout-sub {{
         font-size: 12px;
         color: {c['muted']};
     }}
@@ -124,7 +124,7 @@ def app_css(theme: dict) -> str:
 class PowerConfirm:
     def __init__(self) -> None:
         self.theme = engine.load_theme()
-        self.dialog = Gtk.Dialog(title="Power menu", flags=0)
+        self.dialog = Gtk.Dialog(title="Logout menu", flags=0)
         self.dialog.set_default_size(470, 230)
         self.dialog.set_resizable(False)
         self.dialog.set_decorated(False)
@@ -147,14 +147,14 @@ class PowerConfirm:
         top = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
         box.pack_start(top, False, False, 0)
 
-        icon = Gtk.Label(label="⏻")
+        icon = Gtk.Label(label="󰩈")
         icon.get_style_context().add_class("power-icon")
         top.pack_start(icon, False, False, 0)
 
         titles = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
-        titles.pack_start(self._label("Power menu", "power-title"), False, False, 0)
+        titles.pack_start(self._label("Logout menu", "logout-title"), False, False, 0)
         titles.pack_start(
-            self._label("A confirmation step, so a stray click cannot shut you down.", "power-sub"),
+            self._label("A confirmation step, so a stray click cannot log you out.", "logout-sub"),
             False, False, 0,
         )
         top.pack_start(titles, True, True, 0)
@@ -170,7 +170,7 @@ class PowerConfirm:
 
         message = self._label(
             "hyprshutdown is about to open. Nothing happens until you pick an action there.",
-            "power-sub",
+            "logout-sub",
         )
         message.set_line_wrap(True)
         box.pack_start(message, False, False, 0)
@@ -185,7 +185,7 @@ class PowerConfirm:
         cancel.connect("clicked", lambda *_: self.dialog.response(Gtk.ResponseType.CANCEL))
         actions.pack_start(cancel, False, False, 0)
 
-        confirm = Gtk.Button(label="Open power menu")
+        confirm = Gtk.Button(label="Open Logout menu")
         confirm.set_relief(Gtk.ReliefStyle.NONE)
         confirm.get_style_context().add_class("power-confirm")
         confirm.connect("clicked", lambda *_: self.dialog.response(Gtk.ResponseType.OK))
@@ -284,7 +284,7 @@ def launch_power_menu() -> None:
         )
     else:
         subprocess.Popen(
-            ["notify-send", "Power menu", "hyprshutdown is not installed"],
+            ["notify-send", "Logout menu", "hyprshutdown is not installed"],
             start_new_session=True,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
@@ -295,7 +295,7 @@ def main() -> int:
     if not acquire_lock():
         return 0
     GLib.set_prgname(CLASS)
-    GLib.set_application_name("Power menu confirmation")
+    GLib.set_application_name("Logout menu confirmation")
     Gtk.init([])
     try:
         Gdk.set_program_class(CLASS)

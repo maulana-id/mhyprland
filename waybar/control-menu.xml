@@ -23,6 +23,6 @@
     <child><object class="GtkMenuItem" id="pick_color"><property name="label">󰈊  Pick colour</property></object></child>
     <child><object class="GtkSeparatorMenuItem" id="sep3"/></child>
     <child><object class="GtkMenuItem" id="lock"><property name="label">󰌾  Lock screen</property></object></child>
-    <child><object class="GtkMenuItem" id="power"><property name="label">⏻  Power menu…</property></object></child>
+    <child><object class="GtkMenuItem" id="power"><property name="label">󰩈  Logout menu…</property></object></child>
   </object>
 </interface>

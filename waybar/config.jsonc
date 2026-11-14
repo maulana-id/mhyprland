@@ -50,8 +50,8 @@
     "on-scroll-down": "hyprctl hyprsunset gamma -5"
   },
   "custom/power": {
-    "format": "\u23fb",
-    "tooltip-format": "Power menu\nAsks for confirmation first",
+    "format": "\udb82\ude48",
+    "tooltip-format": "Logout menu\nAsks for confirmation first",
     "on-click": "$HOME/.config/waybar/scripts/power-menu"
   },
   "custom/weather": {

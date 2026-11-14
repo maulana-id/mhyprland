@@ -51,7 +51,7 @@
   },
   "custom/power": {
     "format": "⏻",
-    "tooltip-format": "Power menu\nAsks for confirmation first",
+    "tooltip-format": "Logout menu\nAsks for confirmation first",
     "on-click": "$HOME/.config/waybar/scripts/power-menu"
   },
   "custom/weather": {
