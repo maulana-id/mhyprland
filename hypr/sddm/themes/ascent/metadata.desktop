@@ -1,4 +1,14 @@
-[Desktop Entry]
+[SddmGreeterTheme]
 Name=Ascent
-Comment=Ascent theme for Hyprland
-Type=Application
+Description=Ascent theme for Hyprland
+Author=Ascent desktop
+Copyright=(c) 2026
+License=MIT
+Type=sddm-theme
+Version=1.0
+Theme-Id=ascent
+Theme-API=2.0
+MainScript=Main.qml
+ConfigFile=theme.conf
+TranslationsDirectory=.
+QtVersion=6

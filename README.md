@@ -107,6 +107,8 @@ Theme colors live in the generated `theme.conf`/`theme.js`; rerun
 The QML entry point is `hypr/sddm/themes/ascent/Main.qml` and is linted with Qt 6
 `qmllint`. The theme needs the Qt Quick Controls/Window QML modules above.
 
+The theme metadata is intentionally `QtVersion=6`; without that SDDM falls back to its embedded white theme because it looks for the Qt 5 greeter binary (`sddm-greeter`) instead of `sddm-greeter-qt6`.
+
 ![Ascent SDDM greeter](hypr/assets/screenshot-sddm.png)
 
 ## Session environment
