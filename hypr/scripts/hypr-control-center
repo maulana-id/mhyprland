@@ -1563,7 +1563,8 @@ class ControlCenter(Gtk.Application):
         content.pack_start(actions, False, False, 0)
         content.pack_start(lbl(
             "The root actions use the polkit agent (pkexec). SDDM is not restarted from here: "
-            "changes are picked up at the next login screen or reboot.",
+            "changes are picked up at the next login screen or reboot. A white full-screen "
+            "layer at the greeter is usually Qt Virtual Keyboard, not the Ascent theme.",
             "muted", wrap=True,
         ), False, False, 0)
         return scroll
@@ -1636,7 +1637,10 @@ class ControlCenter(Gtk.Application):
         auto = read_conf("10-autologin.conf")
         auto_user = value(auto, "User")
         auto_session = value(auto, "Session")
-        keyboard_on = value(read_conf("30-input-method.conf"), "InputMethod") == "qtvirtualkeyboard"
+        input_method = value(read_conf("30-input-method.conf"), "InputMethod")
+        # Empty means "use SDDM's default", which is qtvirtualkeyboard. Only
+        # compose/ibus are explicit physical-keyboard settings.
+        keyboard_on = input_method not in ("compose", "ibus")
         theme_conf = read_conf("20-theme.conf")
         theme_name = value(theme_conf, "Current") or "default"
         installed = Path("/usr/share/sddm/themes/ascent/theme.conf").exists()
@@ -1662,7 +1666,12 @@ class ControlCenter(Gtk.Application):
         self.sddm_labels["autologin"].set_text(
             f"{auto_user} → {auto_session}" if auto_user else "off"
         )
-        self.sddm_labels["keyboard"].set_text("on (Qt Virtual Keyboard)" if keyboard_on else "off")
+        if input_method == "":
+            self.sddm_labels["keyboard"].set_text("on (SDDM default: Qt Virtual Keyboard)")
+        elif keyboard_on:
+            self.sddm_labels["keyboard"].set_text("on (Qt Virtual Keyboard)")
+        else:
+            self.sddm_labels["keyboard"].set_text(f"off ({input_method})")
         self.sddm_labels["config"].set_text(str(conf))
 
         self._sddm_syncing = True
