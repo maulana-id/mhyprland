@@ -1,0 +1,134 @@
+#!/usr/bin/env bash
+# install-sddm — install the tracked Ascent SDDM theme and enable SDDM.
+#
+# Prerequisites:
+#     sudo apt update
+#     sudo apt install sddm qml6-module-qtquick-controls
+#
+# Usage:
+#     sudo ~/.config/hypr/scripts/install-sddm
+#
+# This configures autologin to the Hyprland session and leaves the current
+# terminal session untouched. Reboot to test it.
+set -euo pipefail
+
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+TARGET_USER="${SUDO_USER:-${USER}}"
+TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
+THEME_SRC="$REPO/hypr/sddm/themes/ascent"
+THEME_DIR="/usr/share/sddm/themes/ascent"
+CONF_DIR="/etc/sddm.conf.d"
+GETTY_DIR="/etc/systemd/system/getty@tty1.service.d"
+PROFILE="$TARGET_HOME/.bash_profile"
+BEGIN_MARK="# >>> hypr-autologin >>>"
+END_MARK="# <<< hypr-autologin <<<"
+
+if [[ "${EUID}" -ne 0 ]]; then
+    echo "Run this with sudo: sudo $0" >&2
+    exit 1
+fi
+
+if [[ -z "${TARGET_HOME}" || "${TARGET_USER}" == "root" ]]; then
+    echo "Could not determine a non-root login user. Run this with sudo from your user account." >&2
+    exit 1
+fi
+
+if ! command -v sddm >/dev/null 2>&1; then
+    cat >&2 <<'EOF'
+SDDM is not installed yet. Install it first:
+
+    sudo apt update
+    sudo apt install sddm qml6-module-qtquick-controls
+
+Then run this script again.
+EOF
+    exit 1
+fi
+
+if [[ ! -f /usr/share/wayland-sessions/hyprland.desktop ]]; then
+    echo "Missing /usr/share/wayland-sessions/hyprland.desktop." >&2
+    exit 1
+fi
+
+if [[ ! -f "$THEME_SRC/Main.qml" || ! -f "$THEME_SRC/theme.conf" || ! -f "$THEME_SRC/theme.js" ]]; then
+    echo "Missing theme files in $THEME_SRC. Run: $REPO/hypr/scripts/theme-switch apply" >&2
+    exit 1
+fi
+
+remove_profile_block() {
+    [[ -f "$PROFILE" ]] || return 0
+    grep -qF "$BEGIN_MARK" "$PROFILE" || return 0
+
+    local tmp
+    tmp="$(mktemp)"
+    awk -v begin="$BEGIN_MARK" -v end="$END_MARK" '
+        $0 == begin { skip = 1; next }
+        $0 == end   { skip = 0; next }
+        !skip       { print }
+    ' "$PROFILE" >"$tmp"
+    cat "$tmp" >"$PROFILE"
+    rm -f "$tmp"
+    chown "${TARGET_USER}:" "$PROFILE"
+}
+
+# The SDDM theme is a copy under /usr/share: the sddm user cannot read /home.
+install -d -m 0755 "$THEME_DIR"
+install -m 0644 "$THEME_SRC/Main.qml" "$THEME_DIR/Main.qml"
+install -m 0644 "$THEME_SRC/theme.conf" "$THEME_DIR/theme.conf"
+install -m 0644 "$THEME_SRC/theme.js" "$THEME_DIR/theme.js"
+install -m 0644 "$THEME_SRC/metadata.desktop" "$THEME_DIR/metadata.desktop"
+
+# Follow the active wallpaper; fall back to the tracked default.
+WALLPAPER="$(
+    HOME="$TARGET_HOME" python3 - "$REPO" <<'PY'
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(sys.argv[1]) / "hypr" / "scripts"))
+import theme_engine
+
+state = theme_engine.load_state()
+path = theme_engine.expand_path(state.get("wallpaper_render") or state.get("wallpaper") or "")
+print(path if path.is_file() else "")
+PY
+)"
+if [[ -n "$WALLPAPER" && -f "$WALLPAPER" ]]; then
+    install -m 0644 "$WALLPAPER" "$THEME_DIR/background.png"
+else
+    install -m 0644 "$REPO/hypr/assets/default-wallpaper.png" "$THEME_DIR/background.png"
+fi
+
+install -d -m 0755 "$CONF_DIR"
+cat >"$CONF_DIR/10-autologin.conf" <<EOF
+[Autologin]
+User=${TARGET_USER}
+Session=hyprland
+Relogin=false
+EOF
+cat >"$CONF_DIR/20-theme.conf" <<'EOF'
+[Theme]
+Current=ascent
+ThemeDir=/usr/share/sddm/themes
+EOF
+
+# Remove the tty autologin path, otherwise both would compete for tty1.
+rm -f "$GETTY_DIR/autologin.conf"
+rmdir "$GETTY_DIR" 2>/dev/null || true
+remove_profile_block
+
+systemctl daemon-reload
+systemctl enable sddm.service
+systemctl set-default graphical.target
+
+cat <<EOF
+
+SDDM theme and autologin are installed for ${TARGET_USER}.
+The current session is still running; reboot when ready:
+
+    sudo reboot
+
+The greeter is visible if you log out (autologin takes you straight to Hyprland).
+After changing theme or wallpaper, regenerate and reinstall:
+
+    ${REPO}/hypr/scripts/theme-switch apply
+    sudo ${REPO}/hypr/scripts/install-sddm
+EOF

@@ -20,6 +20,8 @@ HYPR = CONFIG / "hypr"
 WAYBAR = CONFIG / "waybar"
 KITTY = CONFIG / "kitty"
 DUNST = CONFIG / "dunst"
+SDDM = HYPR / "sddm"
+SDDM_THEME = SDDM / "themes" / "ascent"
 THEMES_DIR = HYPR / "themes"
 TEMPLATES_DIR = HYPR / "templates"
 SCRIPTS_DIR = HYPR / "scripts"
@@ -408,6 +410,48 @@ def render_hyprpaper(theme: dict, state: dict) -> str:
     return _template("hyprpaper.conf.in").safe_substitute(_template_values(theme, state))
 
 
+def render_sddm_conf(theme: dict, state: dict) -> str:
+    c = theme["colors"]
+    return f"""# Generated from hypr/themes/{theme['slug']}.toml — do not edit.
+[General]
+background=background.png
+type=image
+color={c['bg']}
+"""
+
+
+def render_sddm_js(theme: dict, state: dict) -> str:
+    c = theme["colors"]
+
+    def hx(key: str) -> str:
+        return _hex(c[key])
+
+    return f"""// Generated from hypr/themes/{theme['slug']}.toml — do not edit.
+.pragma library
+
+var bg = "#{hx('bg')}";
+var bgAlt = "#{hx('bg_alt')}";
+var surface = "#{hx('surface')}";
+var surfaceAlt = "#{hx('surface_alt')}";
+var fg = "#{hx('fg')}";
+var fgDim = "#{hx('fg_dim')}";
+var muted = "#{hx('muted')}";
+var border = "#{hx('border')}";
+var accent = "#{hx('accent')}";
+var accentAlt = "#{hx('accent_alt')}";
+var gold = "#{hx('gold')}";
+var red = "#{hx('red')}";
+var green = "#{hx('green')}";
+var cyan = "#{hx('cyan')}";
+var onAccent = "#{hx('on_accent')}";
+var panel = "#e6{hx('surface')}";
+var input = "#cc{hx('bg_alt')}";
+var background = "background.png";
+var fontFamily = "{FONT}";
+var fontDisplay = "Noto Sans";
+"""
+
+
 def render_all(theme: dict | None = None, state: dict | None = None) -> list[Path]:
     state = state or load_state()
     theme = theme or load_theme(state["theme"])
@@ -420,6 +464,8 @@ def render_all(theme: dict | None = None, state: dict | None = None) -> list[Pat
         (HYPR / "hyprpaper.conf", render_hyprpaper(theme, state)),
         (DUNST / "dunstrc", render_dunst(theme, state)),
         (HYPR / "hyprtoolkit.conf", render_hyprtoolkit(theme, state)),
+        (SDDM_THEME / "theme.conf", render_sddm_conf(theme, state)),
+        (SDDM_THEME / "theme.js", render_sddm_js(theme, state)),
     ]
     for path, text in targets:
         if write_if_changed(path, text):

@@ -66,12 +66,34 @@ That script writes a `getty@tty1` autologin drop-in and adds a marked block to
 `/etc/systemd/system/getty@tty1.service.d/autologin.conf`, run `systemctl daemon-reload`,
 and delete the `>>> hypr-autologin >>>` block from `~/.bash_profile`.
 
-### Display manager option
+### Themed SDDM (graphical greeter + auto-login)
 
-If a graphical login is preferred, SDDM is the right choice on this machine. Do not install
-it stock and leave it unthemed: the plan is to keep its config and a custom QML theme under
-`hypr/sddm/`, generated from the active palette like Waybar/hyprlock. SDDM can also
-auto-login to the `hyprland` session (`Exec=/usr/bin/start-hyprland`).
+If you want a graphical login manager, install SDDM and the tracked Ascent theme:
+
+```bash
+sudo apt update
+sudo apt install sddm qml6-module-qtquick-controls qml6-module-qtquick-window
+sudo ~/.config/hypr/scripts/install-sddm
+sudo reboot
+```
+
+`install-sddm`:
+
+- copies the QML theme from `hypr/sddm/themes/ascent/` to `/usr/share/sddm/themes/ascent/`
+- copies the current wallpaper as the theme background
+- writes `/etc/sddm.conf.d/10-autologin.conf` for `Session=hyprland`
+- writes `/etc/sddm.conf.d/20-theme.conf`
+- removes the tty autologin path
+- enables SDDM; it does **not** restart it, so the current session stays alive
+
+The greeter is visible on logout; auto-login still takes you straight to Hyprland.
+Theme colors live in the generated `theme.conf`/`theme.js`; rerun
+`theme-switch apply` and `install-sddm` after changing themes or wallpaper.
+
+The QML entry point is `hypr/sddm/themes/ascent/Main.qml` and is linted with Qt 6
+`qmllint`. The theme needs the Qt Quick Controls/Window QML modules above.
+
+![Ascent SDDM greeter](hypr/assets/screenshot-sddm.png)
 
 ## Session environment
 
