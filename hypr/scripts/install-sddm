@@ -109,6 +109,10 @@ cat >"$CONF_DIR/20-theme.conf" <<'EOF'
 Current=ascent
 ThemeDir=/usr/share/sddm/themes
 EOF
+cat >"$CONF_DIR/30-input-method.conf" <<'EOF'
+[General]
+InputMethod=
+EOF
 
 # Remove the tty autologin path, otherwise both would compete for tty1.
 rm -f "$GETTY_DIR/autologin.conf"

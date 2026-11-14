@@ -121,6 +121,7 @@ if command -v hyprctl >/dev/null 2>&1 && hyprctl version >/dev/null 2>&1; then
     sleep 1
 fi
 
+"$SCRIPTS/install-cli" >/dev/null
 say "Done"
 echo "Open the control centre with: $SCRIPTS/hypr-control-center"
 echo "Cycle themes with:          $SCRIPTS/theme-switch next"

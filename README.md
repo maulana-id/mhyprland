@@ -26,6 +26,14 @@ sudo apt install hyprland waybar kitty hyprlock hypridle hyprlauncher hyprshutdo
 
 ## Commands
 
+Put the helper commands in `~/.local/bin` once:
+
+```bash
+~/.config/hypr/scripts/install-cli
+```
+
+After that, these short commands work:
+
 ```bash
 theme-switch list
 theme-switch set nord
@@ -83,6 +91,8 @@ sudo reboot
 - copies the current wallpaper as the theme background
 - writes `/etc/sddm.conf.d/10-autologin.conf` for `Session=hyprland`
 - writes `/etc/sddm.conf.d/20-theme.conf`
+- writes `/etc/sddm.conf.d/30-input-method.conf` with `InputMethod=` empty, disabling SDDM's
+  default full-screen Qt virtual keyboard
 - removes the tty autologin path
 - enables SDDM; it does **not** restart it, so the current session stays alive
 
