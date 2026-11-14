@@ -51,7 +51,9 @@ waybar-mode --list
 hypr-control-center --tab theme
 ```
 
-The Control Center also has wallpaper, bar, desktop, and keybind tabs. `SUPER + SHIFT + T` opens it; `SUPER + ALT + T` changes the theme.
+The Control Center also has wallpaper, bar, desktop, login, and keybind tabs.
+
+`SUPER + SHIFT + E` opens a quick emoji picker; click an emoji or press Enter to copy it to the clipboard. `SUPER + SHIFT + T` opens it; `SUPER + ALT + T` changes the theme.
 
 ## Login
 

@@ -1,0 +1,310 @@
+#!/usr/bin/env python3
+"""Quick emoji picker — SUPER + SHIFT + E.
+
+Parses the Unicode emoji-test database when available, filters by name/group
+and copies the chosen emoji to the Wayland clipboard with wl-copy.
+"""
+
+from __future__ import annotations
+
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+import gi
+
+gi.require_version("Gtk", "3.0")
+gi.require_version("Gdk", "3.0")
+from gi.repository import Gdk, GLib, Gtk, Pango  # noqa: E402
+
+BASE = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(BASE / "hypr" / "scripts"))
+import theme_engine as engine  # noqa: E402
+
+EMOJI_TEST = Path("/usr/share/unicode/emoji/emoji-test.txt")
+FALLBACK = [
+    ("😀", "grinning face", "Smileys & Emotion"),
+    ("😂", "face with tears of joy", "Smileys & Emotion"),
+    ("😊", "smiling face with smiling eyes", "Smileys & Emotion"),
+    ("😍", "smiling face with heart-eyes", "Smileys & Emotion"),
+    ("🥰", "smiling face with hearts", "Smileys & Emotion"),
+    ("😎", "smiling face with sunglasses", "Smileys & Emotion"),
+    ("🤔", "thinking face", "Smileys & Emotion"),
+    ("😭", "loudly crying face", "Smileys & Emotion"),
+    ("🔥", "fire", "Symbols"),
+    ("✨", "sparkles", "Symbols"),
+    ("🚀", "rocket", "Travel & Places"),
+    ("💻", "laptop", "Objects"),
+    ("🎉", "party popper", "Activities"),
+    ("❤️", "red heart", "Symbols"),
+    ("👍", "thumbs up", "People & Body"),
+    ("👀", "eyes", "People & Body"),
+    ("🐧", "penguin", "Animals & Nature"),
+    ("🌈", "rainbow", "Travel & Places"),
+    ("⭐", "star", "Travel & Places"),
+    ("✅", "check mark button", "Symbols"),
+]
+
+
+def load_emoji() -> list[tuple[str, str, str]]:
+    if not EMOJI_TEST.exists():
+        return FALLBACK
+    entries: list[tuple[str, str, str]] = []
+    seen: set[str] = set()
+    group = "Emoji"
+    try:
+        lines = EMOJI_TEST.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return FALLBACK
+    for line in lines:
+        if line.startswith("# group:"):
+            group = line.split(":", 1)[1].strip()
+            continue
+        if "; fully-qualified" not in line or "#" not in line:
+            continue
+        left, right = line.split("#", 1)
+        code = left.split(";", 1)[0].strip()
+        try:
+            emoji = "".join(chr(int(part, 16)) for part in code.split())
+        except ValueError:
+            continue
+        match = re.match(r"\s*\S+\s+E[\d.]+\s+(.*)", right)
+        name = match.group(1).strip() if match else right.strip()
+        if emoji in seen:
+            continue
+        seen.add(emoji)
+        entries.append((emoji, name, group))
+    return entries or FALLBACK
+
+
+def app_css(theme: dict) -> str:
+    c = theme["colors"]
+    return f"""
+    window#emoji-picker {{
+        background-color: {c['bg']};
+        color: {c['fg']};
+        border: 1px solid {c['border']};
+        border-radius: 12px;
+    }}
+    label.title {{
+        font-family: "Noto Sans";
+        font-size: 20px;
+        font-weight: 800;
+        color: {c['fg']};
+    }}
+    label.eyebrow {{
+        font-family: "{engine.FONT}";
+        font-size: 9px;
+        color: {c['muted']};
+        letter-spacing: 2px;
+    }}
+    label.count {{
+        font-family: "{engine.FONT}";
+        font-size: 10px;
+        color: {c['muted']};
+    }}
+    entry {{
+        background-color: {c['bg_alt']};
+        background-image: none;
+        color: {c['fg']};
+        border: 1px solid {c['border']};
+        border-radius: 9px;
+        padding: 8px 11px;
+        caret-color: {c['accent']};
+    }}
+    entry:focus {{
+        border-color: {c['accent']};
+    }}
+    entry selection {{
+        background-color: {c['accent']};
+        color: {c['on_accent']};
+    }}
+    button.emoji {{
+        background-color: {c['surface']};
+        background-image: none;
+        border: 1px solid transparent;
+        border-radius: 8px;
+        padding: 0;
+        min-width: 42px;
+        min-height: 42px;
+    }}
+    button.emoji:hover {{
+        background-color: {c['surface_alt']};
+        border-color: {c['border']};
+    }}
+    label.emoji-glyph {{
+        font-family: "Noto Color Emoji";
+        font-size: 22px;
+    }}
+    button.close {{
+        background: transparent;
+        background-image: none;
+        border: none;
+        color: {c['fg_dim']};
+        font-size: 14px;
+        padding: 2px 8px;
+    }}
+    button.close:hover {{
+        background-color: {c['surface']};
+        color: {c['fg']};
+    }}
+    label.status {{
+        font-family: "{engine.FONT}";
+        font-size: 10px;
+        color: {c['muted']};
+    }}
+    """
+
+
+class EmojiPicker(Gtk.Window):
+    def __init__(self) -> None:
+        super().__init__(title="Emoji")
+        self.set_name("emoji-picker")
+        self.set_default_size(520, 560)
+        self.set_decorated(False)
+        self.set_resizable(False)
+        self.set_skip_taskbar_hint(True)
+        self.set_keep_above(True)
+        self.set_modal(True)
+        self.set_position(Gtk.WindowPosition.CENTER)
+        self.set_border_width(18)
+        self.theme = engine.load_theme()
+        self.entries = load_emoji()
+        self.results = self.entries
+        self.connect("key-press-event", self.on_key)
+        self.apply_style()
+
+        root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        self.add(root)
+
+        header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        titles = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        title = Gtk.Label(label="Emoji")
+        title.set_xalign(0)
+        title.get_style_context().add_class("title")
+        eyebrow = Gtk.Label(label="QUICK PICKER  /  SUPER + SHIFT + E")
+        eyebrow.set_xalign(0)
+        eyebrow.get_style_context().add_class("eyebrow")
+        titles.pack_start(title, False, False, 0)
+        titles.pack_start(eyebrow, False, False, 0)
+        header.pack_start(titles, True, True, 0)
+        close = Gtk.Button(label="×")
+        close.set_relief(Gtk.ReliefStyle.NONE)
+        close.get_style_context().add_class("close")
+        close.connect("clicked", lambda *_: self.close_app())
+        header.pack_end(close, False, False, 0)
+        root.pack_start(header, False, False, 0)
+
+        self.search = Gtk.Entry()
+        self.search.set_placeholder_text("Search emoji…")
+        self.search.connect("changed", lambda *_: self.refresh())
+        self.search.connect("activate", lambda *_: self.copy_first())
+        root.pack_start(self.search, False, False, 0)
+
+        self.count = Gtk.Label(label="")
+        self.count.set_xalign(0)
+        self.count.get_style_context().add_class("count")
+        root.pack_start(self.count, False, False, 0)
+
+        hint = Gtk.Label(label="Click to copy  ·  Enter copies the first result  ·  Esc closes")
+        hint.set_xalign(0)
+        hint.get_style_context().add_class("count")
+        root.pack_start(hint, False, False, 0)
+
+        scroll = Gtk.ScrolledWindow()
+        scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        scroll.set_hexpand(True)
+        scroll.set_vexpand(True)
+        self.flow = Gtk.FlowBox()
+        self.flow.set_selection_mode(Gtk.SelectionMode.NONE)
+        self.flow.set_homogeneous(True)
+        self.flow.set_max_children_per_line(10)
+        self.flow.set_min_children_per_line(8)
+        self.flow.set_row_spacing(6)
+        self.flow.set_column_spacing(6)
+        self.flow.set_valign(Gtk.Align.START)
+        scroll.add(self.flow)
+        root.pack_start(scroll, True, True, 0)
+
+        self.status = Gtk.Label(label="")
+        self.status.set_xalign(0)
+        self.status.get_style_context().add_class("status")
+        root.pack_start(self.status, False, False, 0)
+
+        self.refresh()
+        self.show_all()
+        self.search.grab_focus()
+
+    def apply_style(self) -> None:
+        provider = Gtk.CssProvider()
+        provider.load_from_data(app_css(self.theme).encode("utf-8"))
+        screen = Gdk.Screen.get_default()
+        if screen is not None:
+            Gtk.StyleContext.add_provider_for_screen(
+                screen, provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+            )
+
+    def refresh(self) -> None:
+        for child in self.flow.get_children():
+            self.flow.remove(child)
+        query = self.search.get_text().strip().lower()
+        if query:
+            self.results = [
+                item for item in self.entries
+                if query in item[1].lower() or query in item[2].lower() or query in item[0]
+            ]
+        else:
+            self.results = self.entries
+
+        limit = 300
+        for emoji, name, group in self.results[:limit]:
+            button = Gtk.Button()
+            button.set_relief(Gtk.ReliefStyle.NONE)
+            button.get_style_context().add_class("emoji")
+            button.set_size_request(42, 42)
+            label = Gtk.Label(label=emoji)
+            label.get_style_context().add_class("emoji-glyph")
+            button.add(label)
+            button.set_tooltip_text(f"{name}  ·  {group}")
+            button.connect("clicked", lambda _b, e=emoji, n=name: self.copy(e, n))
+            self.flow.add(button)
+        self.flow.show_all()
+        suffix = f"  ·  showing {limit}" if len(self.results) > limit else ""
+        self.count.set_text(f"{len(self.results)} emoji{suffix}")
+
+    def copy_first(self) -> None:
+        if self.results:
+            emoji, name, _ = self.results[0]
+            self.copy(emoji, name)
+
+    def copy(self, emoji: str, name: str) -> None:
+        try:
+            subprocess.run(["wl-copy"], input=emoji.encode("utf-8"), check=True)
+        except Exception as exc:
+            self.status.set_text(f"Could not copy: {exc}")
+            return
+        self.status.set_text(f"Copied {emoji}  {name}")
+        GLib.timeout_add(350, self.close_app)
+
+    def on_key(self, _widget, event) -> bool:
+        if event.keyval == Gdk.KEY_Escape:
+            self.close_app()
+            return True
+        return False
+
+    def close_app(self) -> bool:
+        Gtk.main_quit()
+        return False
+
+
+def main() -> int:
+    Gdk.set_program_class("hypr-emoji-picker")
+    Gtk.init([])
+    EmojiPicker()
+    Gtk.main()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

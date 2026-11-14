@@ -1706,6 +1706,7 @@ class ControlCenter(Gtk.Application):
             ("SUPER + SHIFT + W", "Hypr Control Center — wallpaper"),
             ("SUPER + ALT + T", "Cycle to the next colour theme"),
             ("SUPER + ALT + B", "Hypr Control Center — Waybar layouts"),
+            ("SUPER + SHIFT + E", "Quick emoji picker → clipboard"),
             ("SUPER + SHIFT + P", "Pick a colour with hyprpicker"),
             ("SUPER + SHIFT + S", "Region screenshot → clipboard"),
             ("Print", "Region screenshot → swappy"),

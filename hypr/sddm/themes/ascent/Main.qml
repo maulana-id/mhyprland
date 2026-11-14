@@ -1,7 +1,5 @@
 // Ascent — themed SDDM greeter for the Hyprland desktop.
 // Generated palette: theme.js (theme-switch apply).
-pragma ComponentBehavior: Bound
-
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Window
@@ -248,6 +246,12 @@ Rectangle {
                 font.pixelSize: 12
                 leftPadding: 12
                 rightPadding: 30
+                palette.text: Theme.fg
+                palette.windowText: Theme.fg
+                palette.base: Theme.surface
+                palette.window: Theme.surface
+                palette.highlight: Theme.accent
+                palette.highlightedText: Theme.onAccent
 
                 contentItem: Text {
                     leftPadding: 12
@@ -277,37 +281,29 @@ Rectangle {
                 delegate: ItemDelegate {
                     id: sessionDelegate
                     width: sessionBox.width
+                    height: 34
+                    text: model.name
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 12
+                    palette.text: Theme.fg
+                    palette.highlightedText: Theme.onAccent
                     contentItem: Text {
-                        text: model.name
-                        color: Theme.fg
-                        font.family: Theme.fontFamily
-                        font.pixelSize: 12
+                        anchors.fill: parent
+                        leftPadding: 10
+                        rightPadding: 10
+                        text: sessionDelegate.text
+                        color: sessionDelegate.highlighted ? Theme.onAccent : Theme.fg
+                        font: sessionDelegate.font
                         verticalAlignment: Text.AlignVCenter
+                        elide: Text.ElideRight
                     }
                     background: Rectangle {
-                        color: sessionDelegate.highlighted ? Theme.surfaceAlt : "transparent"
+                        color: sessionDelegate.highlighted ? Theme.accent : Theme.surface
                         radius: 6
                     }
                     highlighted: sessionBox.highlightedIndex === index
                 }
 
-                popup: Popup {
-                    y: sessionBox.height
-                    width: sessionBox.width
-                    padding: 4
-                    background: Rectangle {
-                        color: Theme.surface
-                        border.color: Theme.border
-                        border.width: 1
-                        radius: 10
-                    }
-                    contentItem: ListView {
-                        clip: true
-                        implicitHeight: contentHeight
-                        model: sessionBox.popup.visible ? sessionBox.delegateModel : null
-                        currentIndex: sessionBox.highlightedIndex
-                    }
-                }
             }
 
             Button {
