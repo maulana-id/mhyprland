@@ -91,12 +91,16 @@ sudo reboot
 - copies the current wallpaper as the theme background
 - writes `/etc/sddm.conf.d/10-autologin.conf` for `Session=hyprland`
 - writes `/etc/sddm.conf.d/20-theme.conf`
-- writes `/etc/sddm.conf.d/30-input-method.conf` with `InputMethod=` empty, disabling SDDM's
-  default full-screen Qt virtual keyboard
+- writes `/etc/sddm.conf.d/30-input-method.conf` with `InputMethod=compose`, disabling SDDM's
+  default full-screen Qt virtual keyboard while keeping dead-key support
 - removes the tty autologin path
 - enables SDDM; it does **not** restart it, so the current session stays alive
 
 The greeter is visible on logout; auto-login still takes you straight to Hyprland.
+
+The Control Center has a **Login** page for SDDM status, autologin and the on-screen
+keyboard. Root actions go through `pkexec` and `hypr/scripts/sddm-config`; nothing is
+restarted until you log out or reboot.
 Theme colors live in the generated `theme.conf`/`theme.js`; rerun
 `theme-switch apply` and `install-sddm` after changing themes or wallpaper.
 
@@ -135,6 +139,6 @@ This repository lives at `~/.config`. `.gitignore` allows only `hypr/`, `waybar/
 
 Waybar logs are in `~/.cache/waybar.log`; the IPC shim log is `~/.cache/waybar-ipc-proxy.log`. Start Waybar through `~/.config/waybar/scripts/start-waybar` so workspace actions use the Hyprland IPC shim.
 
-The shim also mirrors the real instance's `.hyprpaper.sock`, `.hyprsunset.sock` and event socket into the proxy directory (and refreshes them every couple of seconds). That is what allows tools launched from Waybar — the Hyprsunset slider, scroll-to-adjust gamma, and the wallpaper picker — to talk to hyprsunset/hyprpaper while Waybar is using the proxy signature.
+The shim also mirrors the real instance's `.hyprpaper.sock`, `.hyprsunset.sock` and event socket into the proxy directory (and refreshes them every couple of seconds). That is what allows tools launched from Waybar — the Hyprsunset slider, scroll-to-adjust gamma, and the wallpaper picker — to talk to hyprsunset/hyprpaper while Waybar is using the proxy signature. The proxy directory includes the Hyprland session token, so a new login never reuses the previous session's dead proxy (which used to break the Waybar power/hyprshutdown button).
 
 Do not enable `waybar.service`: it starts a second bare Waybar without the IPC shim. This setup starts Waybar only from `hyprland.lua` via `start-waybar`; the user service is masked and its original file is kept as `~/.config/systemd/user/waybar.service.disabled`.

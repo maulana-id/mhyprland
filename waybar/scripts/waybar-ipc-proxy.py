@@ -79,6 +79,7 @@ class WaybarIPCProxy:
         self.proxy_dir = runtime / proxy_sig
         self.real_socket = self.real_dir / ".socket.sock"
         self.proxy_socket = self.proxy_dir / ".socket.sock"
+        self.server: socket.socket | None = None
         self.running = True
 
     def _sync_sockets(self) -> None:
@@ -157,6 +158,7 @@ class WaybarIPCProxy:
         if self.proxy_socket.exists():
             self.proxy_socket.unlink()
         server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.server = server
         server.bind(str(self.proxy_socket))
         os.chmod(self.proxy_socket, 0o600)
         server.listen(64)
@@ -183,6 +185,14 @@ class WaybarIPCProxy:
             self.proxy_socket.unlink()
         except OSError:
             pass
+        if self.server is not None:
+            try:
+                self.server.close()
+            except OSError:
+                pass
+        # The accept() loop can otherwise survive SIGTERM and leave a stale
+        # proxy process for the next Hyprland login.
+        os._exit(0)
 
 
 def main() -> int:

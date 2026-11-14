@@ -14,6 +14,9 @@ set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 TARGET_USER="${SUDO_USER:-${USER}}"
+if [[ -n "${PKEXEC_UID:-}" ]]; then
+    TARGET_USER="$(getent passwd "$PKEXEC_UID" | cut -d: -f1)"
+fi
 TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
 THEME_SRC="$REPO/hypr/sddm/themes/ascent"
 THEME_DIR="/usr/share/sddm/themes/ascent"
@@ -111,7 +114,7 @@ ThemeDir=/usr/share/sddm/themes
 EOF
 cat >"$CONF_DIR/30-input-method.conf" <<'EOF'
 [General]
-InputMethod=
+InputMethod=compose
 EOF
 
 # Remove the tty autologin path, otherwise both would compete for tty1.

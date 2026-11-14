@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# sddm-config — small root helper used by the Control Center and install-sddm.
+# Run through pkexec; it never restarts SDDM.
+set -euo pipefail
+
+if [[ "${EUID}" -ne 0 ]]; then
+    echo "Run this through pkexec or sudo." >&2
+    exit 1
+fi
+
+TARGET_USER=""
+if [[ -n "${PKEXEC_UID:-}" ]]; then
+    TARGET_USER="$(getent passwd "$PKEXEC_UID" | cut -d: -f1)"
+else
+    TARGET_USER="${SUDO_USER:-${USER}}"
+fi
+if [[ -z "${TARGET_USER}" || "${TARGET_USER}" == "root" ]]; then
+    echo "Could not determine the desktop user." >&2
+    exit 1
+fi
+
+CONF_DIR="/etc/sddm.conf.d"
+install -d -m 0755 "$CONF_DIR"
+
+case "${1:-}" in
+    autologin-on)
+        cat >"$CONF_DIR/10-autologin.conf" <<CONF
+[Autologin]
+User=${TARGET_USER}
+Session=hyprland
+Relogin=false
+CONF
+        echo "Autologin enabled for ${TARGET_USER}."
+        ;;
+    autologin-off)
+        rm -f "$CONF_DIR/10-autologin.conf"
+        echo "Autologin disabled; SDDM will show the greeter."
+        ;;
+    keyboard-off)
+        cat >"$CONF_DIR/30-input-method.conf" <<'CONF'
+[General]
+InputMethod=compose
+CONF
+        echo "Qt Virtual Keyboard disabled."
+        ;;
+    keyboard-on)
+        cat >"$CONF_DIR/30-input-method.conf" <<'CONF'
+[General]
+InputMethod=qtvirtualkeyboard
+CONF
+        echo "Qt Virtual Keyboard enabled."
+        ;;
+    *)
+        echo "usage: $0 {autologin-on|autologin-off|keyboard-off|keyboard-on}" >&2
+        exit 2
+        ;;
+esac

@@ -14,6 +14,9 @@
 set -euo pipefail
 
 TARGET_USER="${SUDO_USER:-${USER}}"
+if [[ -n "${PKEXEC_UID:-}" ]]; then
+    TARGET_USER="$(getent passwd "$PKEXEC_UID" | cut -d: -f1)"
+fi
 TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
 START_HYPRLAND="/usr/bin/start-hyprland"
 GETTY_DIR="/etc/systemd/system/getty@tty1.service.d"

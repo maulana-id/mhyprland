@@ -30,6 +30,7 @@ PAGES = [
     ("bar", "󰕘", "Waybar"),
     ("cava", "󰝚", "Visualizer"),
     ("desktop", "󰒓", "Desktop"),
+    ("login", "󰍃", "Login"),
     ("keys", "󰌌", "Keybinds"),
 ]
 LAYOUT_INFO = {
@@ -132,6 +133,9 @@ class ControlCenter(Gtk.Application):
         self.cava_preview_lbl: Gtk.Label | None = None
         self.cava_swatches: dict[str, Gtk.EventBox] = {}
         self.cava_color_rows: dict[str, Gtk.Widget] = {}
+        self.sddm_labels: dict[str, Gtk.Label] = {}
+        self.sddm_switches: dict[str, Gtk.Switch] = {}
+        self._sddm_syncing = False
         self._grad_rows: list[Gtk.Widget] = []
         self._css_provider: Gtk.CssProvider | None = None
         self._status_source: int | None = None
@@ -198,6 +202,7 @@ class ControlCenter(Gtk.Application):
         self.refresh_bar_state()
         self.refresh_options()
         self.refresh_status()
+        self.refresh_sddm_state()
         self.set_status("Ready")
 
         self.window.show_all()
@@ -224,6 +229,7 @@ class ControlCenter(Gtk.Application):
         if changed_theme or changed_wallpaper:
             self.refresh_wallpapers()
             self.refresh_status()
+            self.refresh_sddm_state()
         self._last_state = state
         return True
 
@@ -1488,6 +1494,184 @@ class ControlCenter(Gtk.Application):
             self.set_status("Theme files re-applied")
         except Exception as exc:
             self.show_error(str(exc))
+
+    # ------------------------------------------------------------------ #
+    # login / SDDM page
+    # ------------------------------------------------------------------ #
+    def make_login_page(self) -> Gtk.Widget:
+        scroll, content = self.page()
+        content.pack_start(section_title(
+            "Login screen",
+            "SDDM greeter, autologin and the on-screen keyboard. The greeter uses the "
+            "Ascent QML theme from hypr/sddm/ and follows the active palette.",
+        ), False, False, 0)
+
+        preview_path = engine.HYPR / "assets" / "screenshot-sddm.png"
+        if preview_path.exists():
+            try:
+                pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(str(preview_path), 660, 371, True)
+                preview = Gtk.Image.new_from_pixbuf(pixbuf)
+                preview.set_halign(Gtk.Align.START)
+                content.pack_start(preview, False, False, 0)
+            except Exception:
+                pass
+
+        status = vbox(4)
+        status.get_style_context().add_class("card")
+        status.pack_start(lbl("Greeter status", "theme-name"), False, False, 2)
+        grid = Gtk.Grid()
+        grid.set_column_spacing(24)
+        grid.set_row_spacing(5)
+        for index, (key, title) in enumerate((
+            ("service", "Display manager"),
+            ("theme", "Theme"),
+            ("autologin", "Autologin"),
+            ("keyboard", "On-screen keyboard"),
+            ("config", "Config"),
+        )):
+            grid.attach(lbl(title, "muted"), 0, index, 1, 1)
+            value = lbl("", "status-value", selectable=True)
+            grid.attach(value, 1, index, 1, 1)
+            self.sddm_labels[key] = value
+        status.pack_start(grid, False, False, 0)
+        content.pack_start(status, False, False, 0)
+
+        options = vbox(4)
+        options.get_style_context().add_class("card")
+        options.pack_start(lbl("Login behaviour", "theme-name"), False, False, 2)
+        for key, title, desc in (
+            ("autologin", "Autologin", "Go straight into the Hyprland session after boot."),
+            ("keyboard", "On-screen keyboard", "Qt Virtual Keyboard; leave off for a physical keyboard."),
+        ):
+            row = hbox(12)
+            row.set_margin_top(6)
+            text = vbox(1)
+            text.pack_start(lbl(title, "setting-title"), False, False, 0)
+            text.pack_start(lbl(desc, "muted", wrap=True), False, False, 0)
+            row.pack_start(text, True, True, 0)
+            switch = Gtk.Switch()
+            switch.set_valign(Gtk.Align.CENTER)
+            switch.connect("state-set", self.on_sddm_switch, key)
+            row.pack_end(switch, False, False, 0)
+            self.sddm_switches[key] = switch
+            options.pack_start(row, False, False, 0)
+        content.pack_start(options, False, False, 0)
+
+        actions = hbox(8)
+        actions.pack_start(button("Apply palette to SDDM", "accent", self.apply_sddm, icon="󰑓"), False, False, 0)
+        actions.pack_start(button("Open SDDM config", "ghost", self.open_sddm_config, icon="󰉋"), False, False, 0)
+        content.pack_start(actions, False, False, 0)
+        content.pack_start(lbl(
+            "The root actions use the polkit agent (pkexec). SDDM is not restarted from here: "
+            "changes are picked up at the next login screen or reboot.",
+            "muted", wrap=True,
+        ), False, False, 0)
+        return scroll
+
+    def on_sddm_switch(self, switch: Gtk.Switch, state: bool, key: str) -> bool:
+        if self._sddm_syncing:
+            return False
+        self.run_sddm_action(f"{key}-{'on' if state else 'off'}")
+        return False
+
+    def run_sddm_action(self, *args: str) -> None:
+        if not shutil.which("pkexec"):
+            self.show_error("pkexec is not installed; run install-sddm from a terminal.")
+            return
+        try:
+            subprocess.Popen(
+                ["pkexec", str(SCRIPTS / "sddm-config"), *args],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            self.set_status("Authorise the SDDM change in the polkit prompt", timeout=0)
+            GLib.timeout_add(1500, self.refresh_sddm_state)
+        except Exception as exc:
+            self.show_error(str(exc))
+
+    def apply_sddm(self) -> None:
+        try:
+            engine.apply_theme()
+        except Exception as exc:
+            self.show_error(str(exc))
+            return
+        if not shutil.which("pkexec"):
+            self.show_error("pkexec is not installed; run install-sddm from a terminal.")
+            return
+        try:
+            subprocess.Popen(
+                ["pkexec", str(SCRIPTS / "install-sddm")],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            self.set_status("Applying the current palette to SDDM…", timeout=0)
+            GLib.timeout_add(2000, self.refresh_sddm_state)
+        except Exception as exc:
+            self.show_error(str(exc))
+
+    def open_sddm_config(self) -> None:
+        subprocess.Popen(
+            ["xdg-open", "/etc/sddm.conf.d"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+    def refresh_sddm_state(self) -> bool:
+        if not self.sddm_labels:
+            return False
+        conf = Path("/etc/sddm.conf.d")
+
+        def read_conf(name: str) -> str:
+            try:
+                return (conf / name).read_text(encoding="utf-8")
+            except OSError:
+                return ""
+
+        def value(text: str, key: str) -> str:
+            for line in text.splitlines():
+                if line.strip().startswith(key + "="):
+                    return line.split("=", 1)[1].strip()
+            return ""
+
+        auto = read_conf("10-autologin.conf")
+        auto_user = value(auto, "User")
+        auto_session = value(auto, "Session")
+        keyboard_on = value(read_conf("30-input-method.conf"), "InputMethod") == "qtvirtualkeyboard"
+        theme_conf = read_conf("20-theme.conf")
+        theme_name = value(theme_conf, "Current") or "default"
+        installed = Path("/usr/share/sddm/themes/ascent/theme.conf").exists()
+        try:
+            active = subprocess.run(
+                ["systemctl", "is-active", "sddm"],
+                capture_output=True, text=True, timeout=2,
+            ).stdout.strip() or "unknown"
+        except Exception:
+            active = "unknown"
+        try:
+            enabled = subprocess.run(
+                ["systemctl", "is-enabled", "sddm"],
+                capture_output=True, text=True, timeout=2,
+            ).stdout.strip() or "unknown"
+        except Exception:
+            enabled = "unknown"
+
+        self.sddm_labels["service"].set_text(f"SDDM · {active} / {enabled}")
+        self.sddm_labels["theme"].set_text(
+            f"{theme_name}" + (" · installed" if installed else " · not installed")
+        )
+        self.sddm_labels["autologin"].set_text(
+            f"{auto_user} → {auto_session}" if auto_user else "off"
+        )
+        self.sddm_labels["keyboard"].set_text("on (Qt Virtual Keyboard)" if keyboard_on else "off")
+        self.sddm_labels["config"].set_text(str(conf))
+
+        self._sddm_syncing = True
+        if "autologin" in self.sddm_switches:
+            self.sddm_switches["autologin"].set_active(bool(auto_user))
+        if "keyboard" in self.sddm_switches:
+            self.sddm_switches["keyboard"].set_active(keyboard_on)
+        self._sddm_syncing = False
+        return False
 
     # ------------------------------------------------------------------ #
     # keybinds page
