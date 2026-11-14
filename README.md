@@ -45,6 +45,47 @@ hypr-control-center --tab theme
 
 The Control Center also has wallpaper, bar, desktop, and keybind tabs. `SUPER + SHIFT + T` opens it; `SUPER + ALT + T` changes the theme.
 
+## Login
+
+This machine currently boots to `tty1`; there is no display manager installed. The `sddm`
+package is removed (`rc`), `/usr/bin/sddm` does not exist, and the old `sddm.service` init
+script is just a no-op. Login is a normal getty/bash login, then `start-hyprland` is run
+manually.
+
+### Auto-login straight into Hyprland (no display manager)
+
+The simplest setup is to keep the TTY and skip a display manager entirely:
+
+```bash
+sudo ~/.config/hypr/scripts/setup-autologin
+sudo reboot
+```
+
+That script writes a `getty@tty1` autologin drop-in and adds a marked block to
+`~/.bash_profile` that execs `/usr/bin/start-hyprland` on tty1. To undo it, remove
+`/etc/systemd/system/getty@tty1.service.d/autologin.conf`, run `systemctl daemon-reload`,
+and delete the `>>> hypr-autologin >>>` block from `~/.bash_profile`.
+
+### Display manager option
+
+If a graphical login is preferred, SDDM is the right choice on this machine. Do not install
+it stock and leave it unthemed: the plan is to keep its config and a custom QML theme under
+`hypr/sddm/`, generated from the active palette like Waybar/hyprlock. SDDM can also
+auto-login to the `hyprland` session (`Exec=/usr/bin/start-hyprland`).
+
+## Session environment
+
+`hyprland.lua` exports the complete session environment to D-Bus and systemd at startup
+(`dbus-update-activation-environment --systemd --all` plus an explicit
+`systemctl --user import-environment`). This matters for X11/XWayland apps launched through
+portals, desktop files or systemd: they need `DISPLAY`, `WAYLAND_DISPLAY`,
+`HYPRLAND_INSTANCE_SIGNATURE`, `XDG_SESSION_TYPE` and `XDG_CURRENT_DESKTOP`.
+
+X11 apps do not have Hyprland workspaces themselves. They map a window to the active
+workspace when the window is created. Long-running tray apps keep opening new windows on
+the workspace where their process first mapped; use a window rule to pin those to a fixed
+workspace, or start them after switching to the workspace you want.
+
 ## Customize
 
 - Themes: `hypr/themes/*.toml`

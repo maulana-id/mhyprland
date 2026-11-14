@@ -1,0 +1,103 @@
+#!/usr/bin/env bash
+# setup-autologin — boot straight into Hyprland from tty1.
+#
+# This machine currently has no display manager. The script configures
+# systemd getty autologin for tty1 and makes the login shell exec
+# start-hyprland. Run it with sudo:
+#
+#     sudo ./hypr/scripts/setup-autologin
+#
+# To undo it, remove the getty drop-in and the marked block in ~/.bash_profile:
+#     sudo rm /etc/systemd/system/getty@tty1.service.d/autologin.conf
+#     sudo systemctl daemon-reload
+#     # then delete the >>> hypr-autologin <<< block from ~/.bash_profile
+set -euo pipefail
+
+TARGET_USER="${SUDO_USER:-${USER}}"
+TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
+START_HYPRLAND="/usr/bin/start-hyprland"
+GETTY_DIR="/etc/systemd/system/getty@tty1.service.d"
+PROFILE="$TARGET_HOME/.bash_profile"
+BEGIN_MARK="# >>> hypr-autologin >>>"
+END_MARK="# <<< hypr-autologin <<<"
+
+if [[ "${EUID}" -ne 0 ]]; then
+    echo "Run this with sudo: sudo $0" >&2
+    exit 1
+fi
+
+if [[ -z "${TARGET_HOME}" || "${TARGET_USER}" == "root" ]]; then
+    echo "Could not determine a non-root login user. Run this with sudo from your user account." >&2
+    exit 1
+fi
+
+if [[ ! -x "${START_HYPRLAND}" ]]; then
+    echo "Missing ${START_HYPRLAND}." >&2
+    exit 1
+fi
+
+if [[ ! -f /usr/share/wayland-sessions/hyprland.desktop ]]; then
+    echo "Warning: /usr/share/wayland-sessions/hyprland.desktop is missing; start-hyprland should still work." >&2
+fi
+
+add_profile_block() {
+    if grep -qF "${BEGIN_MARK}" "$PROFILE" 2>/dev/null; then
+        echo "Hyprland autostart block already present in ${PROFILE}."
+        return 0
+    fi
+
+    touch "$PROFILE"
+    printf '\n%s\n' "${BEGIN_MARK}" >>"$PROFILE"
+    cat >>"$PROFILE" <<'EOF'
+if [ -z "${WAYLAND_DISPLAY:-}" ] && [ "$(tty)" = "/dev/tty1" ]; then
+    exec /usr/bin/start-hyprland
+fi
+EOF
+    printf '%s\n' "${END_MARK}" >>"$PROFILE"
+    chown "${TARGET_USER}:" "$PROFILE"
+    echo "Added the tty1 Hyprland autostart block to ${PROFILE}."
+}
+
+remove_profile_block() {
+    [[ -f "$PROFILE" ]] || return 0
+    grep -qF "${BEGIN_MARK}" "$PROFILE" || return 0
+
+    local tmp
+    tmp="$(mktemp)"
+    awk -v begin="${BEGIN_MARK}" -v end="${END_MARK}" '
+        $0 == begin { skip = 1; next }
+        $0 == end   { skip = 0; next }
+        !skip       { print }
+    ' "$PROFILE" >"$tmp"
+    cat "$tmp" >"$PROFILE"
+    rm -f "$tmp"
+    chown "${TARGET_USER}:" "$PROFILE"
+    echo "Removed the autostart block from ${PROFILE}."
+}
+
+cat <<EOF
+Configuring tty1 auto-login for ${TARGET_USER}.
+This does not install a display manager; it boots directly to Hyprland.
+EOF
+
+install -d -m 0755 "$GETTY_DIR"
+cat >"${GETTY_DIR}/autologin.conf" <<EOF
+[Service]
+ExecStart=
+ExecStart=-/sbin/agetty --autologin ${TARGET_USER} --noclear %I \$TERM
+EOF
+
+add_profile_block
+systemctl daemon-reload
+
+cat <<EOF
+
+Done. On the next boot, tty1 will log in as ${TARGET_USER} and exec start-hyprland.
+Reboot when convenient:
+
+    sudo reboot
+
+If Hyprland fails to start, switch to another VT (Ctrl+Alt+F2) and remove:
+    ${GETTY_DIR}/autologin.conf
+and the ${BEGIN_MARK} block in ${PROFILE}.
+EOF

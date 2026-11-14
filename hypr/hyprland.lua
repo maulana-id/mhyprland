@@ -64,8 +64,8 @@ local menu = "hyprlauncher"
 
 hl.on("hyprland.start", function()
     -- 1. Explicitly export Hyprland desktop identity
-    hl.exec_cmd("dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP=Hyprland")
-    hl.exec_cmd("systemctl --user import-environment WAYLAND_DISPLAY XDG_CURRENT_DESKTOP")
+    hl.exec_cmd("dbus-update-activation-environment --systemd --all")
+    hl.exec_cmd("systemctl --user import-environment WAYLAND_DISPLAY DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE XDG_SESSION_DESKTOP DESKTOP_SESSION HYPRLAND_INSTANCE_SIGNATURE XDG_RUNTIME_DIR")
 
     -- 2. Signal systemd that the graphical session is active
     hl.exec_cmd("systemctl --user start hyprland-session.target")
@@ -108,6 +108,9 @@ hl.env("GDK_BACKEND", "wayland,x11,*")
 
 
 hl.env("XDG_CURRENT_DESKTOP", "Hyprland")
+hl.env("XDG_SESSION_DESKTOP", "Hyprland")
+hl.env("XDG_SESSION_TYPE", "wayland")
+hl.env("DESKTOP_SESSION", "Hyprland")
 hl.env("XDG_MENU_PREFIX", "plasma-")
 -----------------------
 ----- PERMISSIONS -----
