@@ -75,7 +75,6 @@ hl.on("hyprland.start", function()
     hl.exec_cmd("/usr/libexec/hyprpolkitagent &")
     hl.exec_cmd("$HOME/.config/waybar/scripts/start-waybar")
     hl.exec_cmd("dunst")
-    hl.exec_cmd("hypridle")
 	hl.exec_cmd("systemctl --user start hyprsunset.service")
     -- hyprpaper is installed to ~/.local/bin when the system package is unavailable
     hl.exec_cmd("sh -c 'command -v hyprpaper >/dev/null 2>&1 && exec hyprpaper; [ -x \"$HOME/.local/bin/hyprpaper\" ] && exec \"$HOME/.local/bin/hyprpaper\"'")

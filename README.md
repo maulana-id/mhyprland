@@ -121,6 +121,11 @@ The theme metadata is intentionally `QtVersion=6`; without that SDDM falls back 
 portals, desktop files or systemd: they need `DISPLAY`, `WAYLAND_DISPLAY`,
 `HYPRLAND_INSTANCE_SIGNATURE`, `XDG_SESSION_TYPE` and `XDG_CURRENT_DESKTOP`.
 
+Do not start `hypridle` directly when `hypridle.service` is enabled. Two idle
+daemons both run the brightness listener; the second saves the already-dimmed
+value (10) over the real previous brightness, so `brightnessctl -r` restores 10
+instead of your previous level. Hyprland now relies on the systemd service only.
+
 X11 apps do not have Hyprland workspaces themselves. They map a window to the active
 workspace when the window is created. Long-running tray apps keep opening new windows on
 the workspace where their process first mapped; use a window rule to pin those to a fixed
