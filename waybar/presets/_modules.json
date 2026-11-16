@@ -58,7 +58,8 @@
     "format": "{}°",
     "tooltip": true,
     "interval": 900,
-    "exec": "$HOME/.config/waybar/wttrbar --nerd --location Salatiga",
+    "signal": 9,
+    "exec": "$HOME/.config/waybar/scripts/bmkg-weather.py",
     "return-type": "json"
   },
   "power-profiles-daemon": {

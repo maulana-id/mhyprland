@@ -964,6 +964,110 @@ def _signal_cava_waybar() -> None:
         pass
 
 
+WEATHER_CONFIG_PATH = WAYBAR / "weather.local.json"
+DEFAULT_WEATHER_CONFIG = {
+    "provider": "bmkg",       # "bmkg" or "wttr"
+    "adm4": "31.71.03.1001",   # Jakarta (Kemayoran)
+    "location": "Jakarta",     # for wttr.in
+    "unit": "C",               # C or F
+    "lang": "id",              # id or en
+    "days": 3,                 # 1, 2, or 3
+    "show_details": True,
+}
+
+
+def load_weather_config() -> dict:
+    cfg = dict(DEFAULT_WEATHER_CONFIG)
+    if WEATHER_CONFIG_PATH.exists():
+        try:
+            with open(WEATHER_CONFIG_PATH, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, dict):
+                    cfg.update(data)
+        except Exception:
+            pass
+    return cfg
+
+
+def save_weather_config(config: dict) -> None:
+    WEATHER_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    tmp = WEATHER_CONFIG_PATH.with_name(WEATHER_CONFIG_PATH.name + ".tmp")
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(config, f, indent=2, ensure_ascii=False)
+        f.write("\n")
+    tmp.replace(WEATHER_CONFIG_PATH)
+
+    # Invalidate cache for quick update
+    for cp in Path("/tmp").glob("bmkg_weather_*.json"):
+        try:
+            cp.unlink()
+        except OSError:
+            pass
+
+    signal_weather_waybar()
+
+
+def signal_weather_waybar() -> None:
+    """Send SIGRTMIN+9 to Waybar to refresh custom/weather."""
+    try:
+        subprocess.run(
+            ["pkill", "-RTMIN+9", "waybar"],
+            capture_output=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+
+
+def check_bmkg_adm4(adm4: str) -> dict:
+    """Fetch location info and validate adm4 code with BMKG API."""
+    import urllib.request
+    url = f"https://api.bmkg.go.id/publik/prakiraan-cuaca?adm4={adm4}"
+    req = urllib.request.Request(url, headers={"User-Agent": "curl/8.0"})
+    try:
+        with urllib.request.urlopen(req, timeout=6) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        lokasi = data["data"][0]["lokasi"]
+        cuaca = data["data"][0]["cuaca"]
+        flat = [s for day in cuaca for s in day]
+        return {
+            "ok": True,
+            "lokasi": lokasi,
+            "desa": lokasi.get("desa", ""),
+            "kecamatan": lokasi.get("kecamatan", ""),
+            "kotkab": lokasi.get("kotkab", ""),
+            "provinsi": lokasi.get("provinsi", ""),
+            "slots_count": len(flat),
+        }
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+def check_wttr_location(location: str) -> dict:
+    """Validate and preview location using wttrbar."""
+    wttrbar_bin = WAYBAR / "wttrbar"
+    if not wttrbar_bin.exists():
+        return {"ok": False, "error": "wttrbar binary not found in waybar directory"}
+    try:
+        cmd = [str(wttrbar_bin), "--nerd", "--location", location]
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=8)
+        if res.returncode == 0:
+            data = json.loads(res.stdout)
+            loc_line = ""
+            for line in data.get("tooltip", "").splitlines():
+                if line.startswith("Location:"):
+                    loc_line = line.replace("Location:", "").strip()
+                    break
+            return {
+                "ok": True,
+                "location": loc_line or location,
+                "sample_text": data.get("text", ""),
+            }
+        return {"ok": False, "error": res.stderr.strip() or "wttr.in request failed"}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+
 def set_option(key: str, value) -> dict:
     state = load_state()
     bool_keys = {"blur", "animations", "shadow"}

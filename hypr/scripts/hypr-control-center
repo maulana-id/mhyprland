@@ -29,6 +29,7 @@ PAGES = [
     ("wallpaper", "󰸉", "Wallpaper"),
     ("bar", "󰕘", "Waybar"),
     ("cava", "󰝚", "Visualizer"),
+    ("weather", "󰖐", "Weather"),
     ("desktop", "󰒓", "Desktop"),
     ("login", "󰍃", "Login"),
     ("keys", "󰌌", "Keybinds"),
@@ -200,6 +201,7 @@ class ControlCenter(Gtk.Application):
         self.refresh_theme_state()
         self.refresh_wallpapers()
         self.refresh_bar_state()
+        self.refresh_weather_state()
         self.refresh_options()
         self.refresh_status()
         self.refresh_sddm_state()
@@ -370,6 +372,8 @@ class ControlCenter(Gtk.Application):
         return False
 
     def show_page(self, name: str) -> None:
+        if name == "weather":
+            self.refresh_weather_state()
         self.stack.set_visible_child_name(name)
         self.update_nav(name)
 
@@ -791,6 +795,25 @@ class ControlCenter(Gtk.Application):
         vis_act.pack_start(button("Customize visualizer…", "accent", lambda: self.show_page("cava"), icon="󰝚"), False, False, 0)
         vis_card.pack_start(vis_act, False, False, 2)
         content.pack_start(vis_card, False, False, 0)
+        # -------------------------------------------------------------------
+
+        # ---- BMKG Weather forecast card (quick link to Weather page) ------
+        weather_card = vbox(6)
+        weather_card.get_style_context().add_class("card")
+        weather_card.set_margin_top(2)
+        top_w = hbox(8)
+        top_w.pack_start(lbl("Weather forecast", "theme-name"), True, True, 0)
+        top_w.pack_end(lbl("BMKG", "pill"), False, False, 0)
+        weather_card.pack_start(top_w, False, False, 0)
+        weather_card.pack_start(lbl(
+            "Indonesian meteorological forecast: customize location code (adm4), temperature unit (°C / °F), "
+            "language, and tooltip detail levels. Changes are stored locally in weather.local.json.",
+            "muted", wrap=True,
+        ), False, False, 0)
+        weather_act = hbox(8)
+        weather_act.pack_start(button("Customize weather…", "accent", lambda: self.show_page("weather"), icon="󰖐"), False, False, 0)
+        weather_card.pack_start(weather_act, False, False, 2)
+        content.pack_start(weather_card, False, False, 0)
         # -------------------------------------------------------------------
 
         actions = hbox(8)
@@ -1303,6 +1326,331 @@ class ControlCenter(Gtk.Application):
                 f"Current: {state.get('waybar_layout')} / {state.get('bar_position')}"
                 f"  ·  {len(engine.waybar_presets())} presets available"
             )
+
+    # ------------------------------------------------------------------ #
+    # weather page
+    # ------------------------------------------------------------------ #
+    def make_weather_page(self) -> Gtk.Widget:
+        scroll, content = self.page()
+        content.pack_start(section_title(
+            "Weather Forecast",
+            "Choose between BMKG (detailed Indonesian village forecast) or wttr.in (worldwide city forecast).",
+        ), False, False, 0)
+
+        cfg = engine.load_weather_config()
+        current_provider = cfg.get("provider", "bmkg")
+
+        # 1. Provider Selector Card
+        prov_card = vbox(8)
+        prov_card.get_style_context().add_class("card")
+        prov_top = hbox(8)
+        prov_top.pack_start(lbl("Forecast Provider", "theme-name"), True, True, 0)
+        prov_top.pack_end(lbl("Source", "pill"), False, False, 0)
+        prov_card.pack_start(prov_top, False, False, 0)
+
+        prov_row = hbox(12)
+        prov_text = vbox(1)
+        prov_text.pack_start(lbl("Active service", "setting-title"), False, False, 0)
+        prov_text.pack_start(lbl("Select BMKG for Indonesia or wttr.in for anywhere in the world.", "muted", wrap=True), False, False, 0)
+        prov_row.pack_start(prov_text, True, True, 0)
+
+        self.weather_provider_combo = Gtk.ComboBoxText()
+        self.weather_provider_combo.append("bmkg", "BMKG (Indonesia)")
+        self.weather_provider_combo.append("wttr", "wttr.in (Worldwide)")
+        self.weather_provider_combo.set_active_id(current_provider)
+        self.weather_provider_combo.connect("changed", self.on_weather_provider_changed)
+        prov_row.pack_end(self.weather_provider_combo, False, False, 0)
+        prov_card.pack_start(prov_row, False, False, 0)
+        content.pack_start(prov_card, False, False, 0)
+
+        # 2. Location Stack (BMKG vs wttr.in)
+        self.weather_loc_stack = Gtk.Stack()
+        self.weather_loc_stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
+        self.weather_loc_stack.set_transition_duration(140)
+
+        # --- Sub-page 1: BMKG Location Card ---
+        bmkg_card = vbox(10)
+        bmkg_card.get_style_context().add_class("card")
+        bmkg_top = hbox(8)
+        bmkg_top.pack_start(lbl("BMKG Location (Kode ADM4)", "theme-name"), True, True, 0)
+        bmkg_top.pack_end(lbl("Indonesia", "pill"), False, False, 0)
+        bmkg_card.pack_start(bmkg_top, False, False, 0)
+        bmkg_card.pack_start(lbl(
+            "BMKG uses Kode Wilayah Tingkat IV (Provinsi.Kab/Kota.Kecamatan.Desa). "
+            "Enter numerical code or pick a quick preset below.",
+            "muted", wrap=True,
+        ), False, False, 0)
+
+        entry_row = hbox(8)
+        self.weather_entry = Gtk.Entry()
+        self.weather_entry.set_text(cfg.get("adm4", "31.71.03.1001"))
+        self.weather_entry.set_placeholder_text("31.71.03.1001")
+        self.weather_entry.set_hexpand(True)
+        self.weather_entry.connect("activate", lambda _: self.on_check_weather_code())
+        entry_row.pack_start(self.weather_entry, True, True, 0)
+
+        chk_btn = button("Check", "accent", self.on_check_weather_code, icon="󰄬")
+        entry_row.pack_end(chk_btn, False, False, 0)
+        bmkg_card.pack_start(entry_row, False, False, 0)
+
+        self.weather_feedback = lbl("Click Check to validate location code", "code", wrap=True)
+        bmkg_card.pack_start(self.weather_feedback, False, False, 0)
+
+        preset_lbl = lbl("Quick Indonesian presets:", "setting-title")
+        bmkg_card.pack_start(preset_lbl, False, False, 2)
+        presets_flow = Gtk.FlowBox()
+        presets_flow.set_selection_mode(Gtk.SelectionMode.NONE)
+        presets_flow.set_max_children_per_line(3)
+        presets_flow.set_min_children_per_line(2)
+        presets_flow.set_row_spacing(6)
+        presets_flow.set_column_spacing(6)
+
+        presets = [
+            ("Jakarta (Kemayoran)", "31.71.03.1001"),
+            ("Salatiga", "33.73.01.1001"),
+            ("Semarang (Wonokerto)", "33.22.16.2002"),
+            ("Bandung", "32.73.01.1001"),
+            ("Surabaya", "35.78.01.1001"),
+            ("Yogyakarta", "34.71.01.1001"),
+        ]
+        for name, code in presets:
+            btn = button(name, "ghost", lambda c=code: self.select_weather_preset(c))
+            presets_flow.add(btn)
+        bmkg_card.pack_start(presets_flow, False, False, 0)
+
+        doc_hint = lbl("Docs: https://data.bmkg.go.id/prakiraan-cuaca/", "muted", wrap=True)
+        bmkg_card.pack_start(doc_hint, False, False, 0)
+        self.weather_loc_stack.add_named(bmkg_card, "bmkg")
+
+        # --- Sub-page 2: wttr.in Location Card ---
+        wttr_card = vbox(10)
+        wttr_card.get_style_context().add_class("card")
+        wttr_top = hbox(8)
+        wttr_top.pack_start(lbl("wttr.in Location (City / Coordinates)", "theme-name"), True, True, 0)
+        wttr_top.pack_end(lbl("Worldwide", "pill"), False, False, 0)
+        wttr_card.pack_start(wttr_top, False, False, 0)
+        wttr_card.pack_start(lbl(
+            "Enter any city name, airport code, or location string for wttr.in.",
+            "muted", wrap=True,
+        ), False, False, 0)
+
+        wttr_entry_row = hbox(8)
+        self.weather_wttr_entry = Gtk.Entry()
+        self.weather_wttr_entry.set_text(cfg.get("location", "Jakarta"))
+        self.weather_wttr_entry.set_placeholder_text("e.g. London, Tokyo, New York")
+        self.weather_wttr_entry.set_hexpand(True)
+        self.weather_wttr_entry.connect("activate", lambda _: self.on_check_weather_code())
+        wttr_entry_row.pack_start(self.weather_wttr_entry, True, True, 0)
+
+        wttr_chk_btn = button("Check", "accent", self.on_check_weather_code, icon="󰄬")
+        wttr_entry_row.pack_end(wttr_chk_btn, False, False, 0)
+        wttr_card.pack_start(wttr_entry_row, False, False, 0)
+
+        self.weather_wttr_feedback = lbl("Click Check to validate city name", "code", wrap=True)
+        wttr_card.pack_start(self.weather_wttr_feedback, False, False, 0)
+
+        wttr_preset_lbl = lbl("Quick Worldwide presets:", "setting-title")
+        wttr_card.pack_start(wttr_preset_lbl, False, False, 2)
+        wttr_flow = Gtk.FlowBox()
+        wttr_flow.set_selection_mode(Gtk.SelectionMode.NONE)
+        wttr_flow.set_max_children_per_line(3)
+        wttr_flow.set_min_children_per_line(2)
+        wttr_flow.set_row_spacing(6)
+        wttr_flow.set_column_spacing(6)
+
+        wttr_presets = [
+            ("London", "London"),
+            ("Tokyo", "Tokyo"),
+            ("New York", "New York"),
+            ("Paris", "Paris"),
+            ("Singapore", "Singapore"),
+            ("Sydney", "Sydney"),
+        ]
+        for name, city in wttr_presets:
+            btn = button(name, "ghost", lambda c=city: self.select_wttr_preset(c))
+            wttr_flow.add(btn)
+        wttr_card.pack_start(wttr_flow, False, False, 0)
+
+        wttr_hint = lbl("Powered by wttr.in open weather service", "muted", wrap=True)
+        wttr_card.pack_start(wttr_hint, False, False, 0)
+        self.weather_loc_stack.add_named(wttr_card, "wttr")
+
+        self.weather_loc_stack.set_visible_child_name(current_provider)
+        content.pack_start(self.weather_loc_stack, False, False, 0)
+
+        # 3. Display Options Card
+        opts_card = vbox(10)
+        opts_card.get_style_context().add_class("card")
+        opts_top = hbox(8)
+        opts_top.pack_start(lbl("Display Options", "theme-name"), True, True, 0)
+        opts_top.pack_end(lbl("Waybar Module", "pill"), False, False, 0)
+        opts_card.pack_start(opts_top, False, False, 0)
+
+        unit_row = hbox(12)
+        unit_text = vbox(1)
+        unit_text.pack_start(lbl("Temperature unit", "setting-title"), False, False, 0)
+        unit_text.pack_start(lbl("Switch between Celsius (°C) and Fahrenheit (°F).", "muted", wrap=True), False, False, 0)
+        unit_row.pack_start(unit_text, True, True, 0)
+        self.weather_unit_combo = Gtk.ComboBoxText()
+        self.weather_unit_combo.append("C", "Celsius (°C)")
+        self.weather_unit_combo.append("F", "Fahrenheit (°F)")
+        self.weather_unit_combo.set_active_id(cfg.get("unit", "C"))
+        unit_row.pack_end(self.weather_unit_combo, False, False, 0)
+        opts_card.pack_start(unit_row, False, False, 0)
+
+        lang_row = hbox(12)
+        lang_text = vbox(1)
+        lang_text.pack_start(lbl("Language", "setting-title"), False, False, 0)
+        lang_text.pack_start(lbl("Language for weather descriptions and calendar dates.", "muted", wrap=True), False, False, 0)
+        lang_row.pack_start(lang_text, True, True, 0)
+        self.weather_lang_combo = Gtk.ComboBoxText()
+        self.weather_lang_combo.append("id", "Bahasa Indonesia")
+        self.weather_lang_combo.append("en", "English")
+        self.weather_lang_combo.set_active_id(cfg.get("lang", "id"))
+        lang_row.pack_end(self.weather_lang_combo, False, False, 0)
+        opts_card.pack_start(lang_row, False, False, 0)
+
+        days_row = hbox(12)
+        days_text = vbox(1)
+        days_text.pack_start(lbl("Forecast days in tooltip (BMKG)", "setting-title"), False, False, 0)
+        days_text.pack_start(lbl("Number of upcoming days displayed when hovering over Waybar.", "muted", wrap=True), False, False, 0)
+        days_row.pack_start(days_text, True, True, 0)
+        self.weather_days_combo = Gtk.ComboBoxText()
+        self.weather_days_combo.append("1", "1 Day (Today only)")
+        self.weather_days_combo.append("2", "2 Days")
+        self.weather_days_combo.append("3", "3 Days (Full BMKG forecast)")
+        self.weather_days_combo.set_active_id(str(cfg.get("days", 3)))
+        days_row.pack_end(self.weather_days_combo, False, False, 0)
+        opts_card.pack_start(days_row, False, False, 0)
+
+        det_row = hbox(12)
+        det_text = vbox(1)
+        det_text.pack_start(lbl("Humidity & Wind details", "setting-title"), False, False, 0)
+        det_text.pack_start(lbl("Include humidity and wind speed/direction in tooltip.", "muted", wrap=True), False, False, 0)
+        det_row.pack_start(det_text, True, True, 0)
+        self.weather_details_sw = Gtk.Switch()
+        self.weather_details_sw.set_valign(Gtk.Align.CENTER)
+        self.weather_details_sw.set_active(bool(cfg.get("show_details", True)))
+        det_row.pack_end(self.weather_details_sw, False, False, 0)
+        opts_card.pack_start(det_row, False, False, 0)
+
+        content.pack_start(opts_card, False, False, 0)
+
+        # 4. Action buttons
+        actions = hbox(8)
+        actions.pack_start(button("Save & Apply", "accent", self.save_weather_settings, icon="󰄬"), False, False, 0)
+        actions.pack_start(button("Reset Default (Jakarta)", "ghost", self.reset_weather_defaults, icon="󰑓"), False, False, 0)
+        actions.pack_start(button("Waybar layout", "ghost", lambda: self.show_page("bar"), icon="󰕘"), False, False, 0)
+        content.pack_start(actions, False, False, 0)
+
+        self.weather_status_lbl = lbl("Stored locally in ~/.config/waybar/weather.local.json", "muted")
+        content.pack_start(self.weather_status_lbl, False, False, 0)
+
+        return scroll
+
+    def on_weather_provider_changed(self, combo: Gtk.ComboBoxText) -> None:
+        p = combo.get_active_id() or "bmkg"
+        self.weather_loc_stack.set_visible_child_name(p)
+
+    def select_weather_preset(self, code: str) -> None:
+        self.weather_entry.set_text(code)
+        self.on_check_weather_code()
+
+    def select_wttr_preset(self, city: str) -> None:
+        self.weather_wttr_entry.set_text(city)
+        self.on_check_weather_code()
+
+    def on_check_weather_code(self) -> None:
+        provider = self.weather_provider_combo.get_active_id() or "bmkg"
+        self.pump()
+        if provider == "bmkg":
+            code = self.weather_entry.get_text().strip()
+            if not code:
+                self.weather_feedback.set_markup("<span color='#e06c75'><b>Error:</b> Please enter a valid adm4 code</span>")
+                return
+            self.weather_feedback.set_text("Validating with BMKG API…")
+            self.pump()
+            res = engine.check_bmkg_adm4(code)
+            if res.get("ok"):
+                desa = res.get("desa", "")
+                kec = res.get("kecamatan", "")
+                kotkab = res.get("kotkab", "")
+                prov = res.get("provinsi", "")
+                parts = [p for p in [desa, f"Kec. {kec}" if kec else "", kotkab, prov] if p]
+                loc_str = ", ".join(parts)
+                self.weather_feedback.set_markup(f"<b>✓ Valid:</b> {loc_str}")
+            else:
+                err = res.get("error", "Failed to connect to BMKG API")
+                self.weather_feedback.set_markup(f"<b>✗ Error:</b> {err}")
+        else:
+            city = self.weather_wttr_entry.get_text().strip()
+            if not city:
+                self.weather_wttr_feedback.set_markup("<span color='#e06c75'><b>Error:</b> Please enter a city name</span>")
+                return
+            self.weather_wttr_feedback.set_text("Validating with wttr.in…")
+            self.pump()
+            res = engine.check_wttr_location(city)
+            if res.get("ok"):
+                loc_name = res.get("location", city)
+                sample = res.get("sample_text", "")
+                self.weather_wttr_feedback.set_markup(f"<b>✓ Valid:</b> {loc_name} ({sample}°)")
+            else:
+                err = res.get("error", "Failed to connect to wttr.in")
+                self.weather_wttr_feedback.set_markup(f"<b>✗ Error:</b> {err}")
+
+    def save_weather_settings(self) -> None:
+        provider = self.weather_provider_combo.get_active_id() or "bmkg"
+        code = self.weather_entry.get_text().strip() or "31.71.03.1001"
+        location = self.weather_wttr_entry.get_text().strip() or "Jakarta"
+        unit = self.weather_unit_combo.get_active_id() or "C"
+        lang = self.weather_lang_combo.get_active_id() or "id"
+        days = int(self.weather_days_combo.get_active_id() or "3")
+        show_details = self.weather_details_sw.get_active()
+
+        cfg = {
+            "provider": provider,
+            "adm4": code,
+            "location": location,
+            "unit": unit,
+            "lang": lang,
+            "days": days,
+            "show_details": show_details,
+        }
+        try:
+            engine.save_weather_config(cfg)
+            self.on_check_weather_code()
+            self.set_status(f"Weather settings applied ({provider.upper()})")
+            if hasattr(self, "weather_status_lbl"):
+                loc_desc = code if provider == "bmkg" else location
+                self.weather_status_lbl.set_text(f"Saved locally to weather.local.json ({provider}: {loc_desc})")
+        except Exception as exc:
+            self.show_error(str(exc))
+
+    def reset_weather_defaults(self) -> None:
+        cfg = dict(engine.DEFAULT_WEATHER_CONFIG)
+        try:
+            engine.save_weather_config(cfg)
+            self.refresh_weather_state()
+            self.on_check_weather_code()
+            self.set_status("Reset weather configuration to default (BMKG Jakarta)")
+            if hasattr(self, "weather_status_lbl"):
+                self.weather_status_lbl.set_text("Reset to default (BMKG: Kemayoran, Jakarta)")
+        except Exception as exc:
+            self.show_error(str(exc))
+
+    def refresh_weather_state(self) -> None:
+        if not hasattr(self, "weather_provider_combo"):
+            return
+        cfg = engine.load_weather_config()
+        provider = cfg.get("provider", "bmkg")
+        self.weather_provider_combo.set_active_id(provider)
+        self.weather_loc_stack.set_visible_child_name(provider)
+        self.weather_entry.set_text(cfg.get("adm4", "31.71.03.1001"))
+        self.weather_wttr_entry.set_text(cfg.get("location", "Jakarta"))
+        self.weather_unit_combo.set_active_id(cfg.get("unit", "C"))
+        self.weather_lang_combo.set_active_id(cfg.get("lang", "id"))
+        self.weather_days_combo.set_active_id(str(cfg.get("days", 3)))
+        self.weather_details_sw.set_active(bool(cfg.get("show_details", True)))
 
     # ------------------------------------------------------------------ #
     # desktop page
@@ -2008,6 +2356,19 @@ class ControlCenter(Gtk.Application):
             font-family: "JetBrainsMono Nerd Font";
             font-size: 11px;
             color: {c['accent_alt']};
+        }}
+        entry {{
+            background-color: {c['surface_alt']};
+            background-image: none;
+            border: 1px solid {c['border']};
+            border-radius: 7px;
+            color: {c['fg']};
+            padding: 6px 12px;
+            font-family: "JetBrainsMono Nerd Font";
+            font-size: 13px;
+        }}
+        entry:focus {{
+            border-color: {c['accent']};
         }}
         switch {{
             background-color: {c['surface_alt']};
