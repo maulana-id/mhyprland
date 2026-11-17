@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import configparser
 import hashlib
 import json
 import os
@@ -31,6 +32,7 @@ PAGES = [
     ("cava", "󰝚", "Visualizer"),
     ("weather", "󰖐", "Weather"),
     ("desktop", "󰒓", "Desktop"),
+    ("apps", "󰀻", "Apps"),
     ("login", "󰍃", "Login"),
     ("keys", "󰌌", "Keybinds"),
 ]
@@ -136,6 +138,8 @@ class ControlCenter(Gtk.Application):
         self.cava_color_rows: dict[str, Gtk.Widget] = {}
         self.sddm_labels: dict[str, Gtk.Label] = {}
         self.sddm_switches: dict[str, Gtk.Switch] = {}
+        self.apps_labels: dict[str, Gtk.Label] = {}
+        self.gtk_combo: Gtk.ComboBoxText | None = None
         self._sddm_syncing = False
         self._grad_rows: list[Gtk.Widget] = []
         self._css_provider: Gtk.CssProvider | None = None
@@ -205,6 +209,7 @@ class ControlCenter(Gtk.Application):
         self.refresh_options()
         self.refresh_status()
         self.refresh_sddm_state()
+        self.refresh_apps_state()
         self.set_status("Ready")
 
         self.window.show_all()
@@ -232,6 +237,7 @@ class ControlCenter(Gtk.Application):
             self.refresh_wallpapers()
             self.refresh_status()
             self.refresh_sddm_state()
+            self.refresh_apps_state()
         self._last_state = state
         return True
 
@@ -1842,6 +1848,191 @@ class ControlCenter(Gtk.Application):
             self.set_status("Theme files re-applied")
         except Exception as exc:
             self.show_error(str(exc))
+
+    # ------------------------------------------------------------------ #
+    # application theme page
+    # ------------------------------------------------------------------ #
+    def make_apps_page(self) -> Gtk.Widget:
+        scroll, content = self.page()
+        content.pack_start(section_title(
+            "Application themes",
+            "GTK/Qt and Eclipse apps sit outside the Hyprland palette. Keep their chrome "
+            "and content on the same side of light/dark.",
+        ), False, False, 0)
+
+        status = vbox(4)
+        status.get_style_context().add_class("card")
+        status.pack_start(lbl("Current application themes", "theme-name"), False, False, 2)
+        grid = Gtk.Grid()
+        grid.set_column_spacing(24)
+        grid.set_row_spacing(5)
+        for index, (key, title) in enumerate((
+            ("eclipse", "STM32CubeIDE"),
+            ("gtk", "GTK theme"),
+        )):
+            grid.attach(lbl(title, "muted"), 0, index, 1, 1)
+            value = lbl("", "status-value", selectable=True)
+            grid.attach(value, 1, index, 1, 1)
+            self.apps_labels[key] = value
+        status.pack_start(grid, False, False, 0)
+        content.pack_start(status, False, False, 0)
+
+        eclipse = vbox(6)
+        eclipse.get_style_context().add_class("card")
+        eclipse.pack_start(lbl("STM32CubeIDE / Eclipse", "theme-name"), False, False, 0)
+        eclipse.pack_start(lbl(
+            "The IDE was on Eclipse Light while the GTK chrome was Adwaita Dark: white "
+            "tree text on a white explorer. Pick Dark here, then close and reopen the IDE.",
+            "muted", wrap=True,
+        ), False, False, 0)
+        row = hbox(8)
+        row.pack_start(button("Dark IDE theme", "accent", lambda: self.set_eclipse_theme("dark"), icon="󰖔"), False, False, 0)
+        row.pack_start(button("Light IDE theme", "ghost", lambda: self.set_eclipse_theme("light"), icon="󰖙"), False, False, 0)
+        eclipse.pack_start(row, False, False, 0)
+        content.pack_start(eclipse, False, False, 0)
+
+        gtk = vbox(6)
+        gtk.get_style_context().add_class("card")
+        gtk.pack_start(lbl("GTK applications", "theme-name"), False, False, 0)
+        gtk.pack_start(lbl(
+            "Affects GTK3/GTK4 apps such as the IDE chrome, file pickers and legacy tools. "
+            "Qt apps use qt6ct separately.",
+            "muted", wrap=True,
+        ), False, False, 0)
+        row = hbox(8)
+        self.gtk_combo = Gtk.ComboBoxText()
+        self.gtk_combo.set_size_request(220, -1)
+        for name in self.gtk_theme_names():
+            self.gtk_combo.append_text(name)
+        row.pack_start(self.gtk_combo, False, False, 0)
+        row.pack_start(button("Apply GTK theme", "accent", self.apply_gtk_theme, icon="󰑓"), False, False, 0)
+        gtk.pack_start(row, False, False, 0)
+        gtk.pack_start(lbl(
+            "Changing this updates GTK settings for new windows immediately; the IDE may "
+            "need a restart.",
+            "muted", wrap=True,
+        ), False, False, 0)
+        content.pack_start(gtk, False, False, 0)
+        return scroll
+
+    def eclipse_theme_files(self) -> list[Path]:
+        return list((Path.home() / "STM32CubeIDE").glob(
+            "*/.metadata/.plugins/org.eclipse.core.runtime/.settings/"
+            "org.eclipse.e4.ui.css.swt.theme.prefs"
+        ))
+
+    def read_eclipse_theme(self) -> str:
+        for path in self.eclipse_theme_files():
+            try:
+                text = path.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            if "e4_dark" in text:
+                return "Dark"
+            if "e4_default" in text:
+                return "Light"
+        return "not found"
+
+    def set_eclipse_theme(self, mode: str) -> None:
+        theme = "org.eclipse.e4.ui.css.theme.e4_dark" if mode == "dark" else "org.eclipse.e4.ui.css.theme.e4_default"
+        paths = self.eclipse_theme_files()
+        if not paths:
+            self.show_error("No STM32CubeIDE workspace preference file found")
+            return
+        for path in paths:
+            try:
+                path.write_text(
+                    f"eclipse.preferences.version=1\nthemeid={theme}\n",
+                    encoding="utf-8",
+                )
+            except OSError as exc:
+                self.show_error(str(exc))
+                return
+        self.refresh_apps_state()
+        self.set_status("Eclipse theme saved — close and reopen STM32CubeIDE", timeout=10)
+
+    def gtk_theme_names(self) -> list[str]:
+        names: set[str] = set()
+        for root in (
+            Path("/usr/share/themes"),
+            Path.home() / ".themes",
+            Path.home() / ".local" / "share" / "themes",
+        ):
+            try:
+                for entry in root.iterdir():
+                    if entry.is_dir() and ((entry / "gtk-3.0").exists() or (entry / "gtk-4.0").exists()):
+                        names.add(entry.name)
+            except OSError:
+                pass
+        names.update({"Adwaita", "Adwaita-dark"})
+        return sorted(names, key=str.lower)
+
+    def current_gtk_theme(self) -> str:
+        settings = Gtk.Settings.get_default()
+        if settings is not None:
+            name = settings.get_property("gtk-theme-name")
+            if name:
+                return str(name)
+        return "Adwaita-dark"
+
+    def apply_gtk_theme(self) -> None:
+        if self.gtk_combo is None:
+            return
+        name = self.gtk_combo.get_active_text()
+        if not name:
+            return
+        settings = Gtk.Settings.get_default()
+        if settings is not None:
+            settings.set_property("gtk-theme-name", name)
+        for version in ("gtk-3.0", "gtk-4.0"):
+            directory = Path.home() / ".config" / version
+            directory.mkdir(parents=True, exist_ok=True)
+            path = directory / "settings.ini"
+            parser = configparser.ConfigParser()
+            parser.optionxform = str
+            if path.exists():
+                try:
+                    parser.read(path)
+                except configparser.Error:
+                    parser = configparser.ConfigParser()
+                    parser.optionxform = str
+            if not parser.has_section("Settings"):
+                parser.add_section("Settings")
+            parser.set("Settings", "gtk-theme-name", name)
+            with path.open("w", encoding="utf-8") as handle:
+                parser.write(handle)
+        try:
+            subprocess.run(
+                ["gsettings", "set", "org.gnome.desktop.interface", "gtk-theme", name],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=3,
+            )
+        except Exception:
+            pass
+        self.refresh_apps_state()
+        self.set_status(f"GTK theme: {name}", timeout=6)
+
+    def refresh_apps_state(self) -> bool:
+        if not self.apps_labels:
+            return False
+        eclipse = self.read_eclipse_theme()
+        gtk = self.current_gtk_theme()
+        self.apps_labels["eclipse"].set_text(f"Eclipse {eclipse}")
+        self.apps_labels["gtk"].set_text(gtk)
+        if self.gtk_combo is not None:
+            model = self.gtk_combo.get_model()
+            found = False
+            if model is not None:
+                for index, row in enumerate(model):
+                    if row[0] == gtk:
+                        self.gtk_combo.set_active(index)
+                        found = True
+                        break
+            if not found:
+                self.gtk_combo.append_text(gtk)
+                model = self.gtk_combo.get_model()
+                if model is not None:
+                    self.gtk_combo.set_active(len(model) - 1)
+        return False
 
     # ------------------------------------------------------------------ #
     # login / SDDM page

@@ -113,6 +113,13 @@ The theme metadata is intentionally `QtVersion=6`; without that SDDM falls back 
 
 ![Ascent SDDM greeter](hypr/assets/screenshot-sddm.png)
 
+## Applications
+
+Hyprland's palette does not propagate into GTK/Qt apps. The Control Center **Apps**
+page controls the GTK theme and the STM32CubeIDE Eclipse theme. Eclipse Light plus
+an Adwaita Dark GTK chrome is what made the Project Explorer text white-on-white;
+select **Dark IDE theme**, then close and reopen STM32CubeIDE.
+
 ## Session environment
 
 `hyprland.lua` exports the complete session environment to D-Bus and systemd at startup
